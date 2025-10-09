@@ -1,8 +1,10 @@
 #include "InkDrop.h"
 #include <cmath>
 #include <algorithm>
+#include <GL/glu.h>
+#include <cstdio>
 
-constexpr int NUM_VERTICES = 1024;
+constexpr int NUM_VERTICES = 128;
 
 InkDrop::InkDrop(float x, float y, float radius, float r, float g, float b)
     : centre(x, y), radius(radius), r(r), g(g), b(b)
@@ -25,39 +27,75 @@ InkDrop::InkDrop(float x, float y, float radius, float r, float g, float b)
     }
 }
 
+void beginCallback(GLenum which)
+{
+    glBegin(which);
+}
+
+void endCallback()
+{
+    glEnd();
+}
+
+void vertexCallback(GLvoid *vertex)
+{
+    const GLdouble *ptr = (const GLdouble *)vertex;
+    glVertex3dv(ptr);
+}
+
+void errorCallback(GLenum errorCode)
+{
+    const GLubyte *estring = gluErrorString(errorCode);
+    fprintf(stderr, "Tessellation Error: %s\n", estring);
+}
+
+void combineCallback(GLdouble coords[3], const GLdouble *vertex_data[4],
+                     const GLfloat weight[4], GLvoid **outData)
+{
+    GLdouble *newVertex = new GLdouble[3];
+
+    newVertex[0] = coords[0];
+    newVertex[1] = coords[1];
+    newVertex[2] = coords[2];
+
+    *outData = newVertex;
+}
 void InkDrop::render() const
 {
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    glEnable(GL_LINE_SMOOTH);
-    glHint(GL_LINE_SMOOTH_HINT, GL_NICEST);
-
     glColor4f(r, g, b, 1.0f);
-    glEnableClientState(GL_VERTEX_ARRAY);
 
-    std::vector<float> vertexData;
-    for (const auto &vertex : vertices)
+    GLUtesselator *tess = gluNewTess();
+    if (!tess)
+        return;
+
+    std::vector<GLdouble[3]> tessVertices(vertices.size());
+    for (size_t i = 0; i < vertices.size(); ++i)
     {
-        vertexData.push_back(vertex.x);
-        vertexData.push_back(vertex.y);
+        tessVertices[i][0] = vertices[i].x;
+        tessVertices[i][1] = vertices[i].y;
+        tessVertices[i][2] = 0.0;
     }
 
-    glVertexPointer(2, GL_FLOAT, 0, vertexData.data());
-    // Render points only
-    glPointSize(2.0f);
-    glDrawArrays(GL_POINTS, 0, NUM_VERTICES);
+    gluTessCallback(tess, GLU_TESS_BEGIN, (_GLUfuncptr)beginCallback);
+    gluTessCallback(tess, GLU_TESS_END, (_GLUfuncptr)endCallback);
+    gluTessCallback(tess, GLU_TESS_VERTEX, (_GLUfuncptr)vertexCallback);
+    gluTessCallback(tess, GLU_TESS_ERROR, (_GLUfuncptr)errorCallback);
+    gluTessCallback(tess, GLU_TESS_COMBINE, (_GLUfuncptr)combineCallback);
 
-    // Render Polygon
-    // glDrawArrays(GL_POLYGON, 0, NUM_VERTICES);
+    gluTessBeginPolygon(tess, nullptr);
+    gluTessBeginContour(tess);
+    for (size_t i = 0; i < vertices.size(); ++i)
+    {
+        gluTessVertex(tess, tessVertices[i], tessVertices[i]);
+    }
+    gluTessEndContour(tess);
+    gluTessEndPolygon(tess);
 
-    glDisableClientState(GL_VERTEX_ARRAY);
-
-    glLineWidth(1.5f);
-    glColor4f(0.0f, 0.0f, 0.0f, 0.5f);
-    glDrawArrays(GL_LINE_LOOP, 0, NUM_VERTICES);
+    gluDeleteTess(tess);
 
     glDisable(GL_BLEND);
-    glDisable(GL_LINE_SMOOTH);
 }
 
 void InkDrop::marbled(const InkDrop &other)

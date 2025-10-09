@@ -1,7 +1,7 @@
 # Compiler and flags
 CXX = g++
 CXXFLAGS = -Wall -std=c++17
-LDFLAGS = -lGLEW -lglfw -lGL -lm
+LDFLAGS = -lGLEW -lglfw -lGL -lm -lGLU
 
 # Directories
 SRC_DIR = Source

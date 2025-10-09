@@ -16,7 +16,7 @@ float Canvas::randomFloat(float lower, float upper)
 
 void Canvas::add_drop(float x, float y, float radius)
 {
-    InkDrop new_drop(x, y, randomFloat(40, 140), randomFloat(0, 1), randomFloat(0, 1), randomFloat(0, 1));
+    InkDrop new_drop(x, y, randomFloat(40, 100), randomFloat(0, 1), randomFloat(0, 1), randomFloat(0, 1));
     for (auto &drop : inkDrops)
     {
         drop.marbled(new_drop);
