@@ -4,26 +4,22 @@
 #include <GL/glu.h>
 #include <cstdio>
 
-constexpr int NUM_VERTICES = 128;
+constexpr int NUM_VERTICES = 512;
 
 InkDrop::InkDrop(float x, float y, float radius, float r, float g, float b)
     : centre(x, y), radius(radius), r(r), g(g), b(b)
 {
+    vertices.reserve(NUM_VERTICES);
+    float angleStep = 2.0f * M_PI / NUM_VERTICES;
 
-    float epsilon = 0.05f;
-    float currentX = radius;
-    float currentY = 0.0f;
-
-    // Minsky circle algorithm
     for (int i = 0; i < NUM_VERTICES; i++)
     {
-        vertices.emplace_back(centre.x + currentX, centre.y + currentY);
+        float currentAngle = i * angleStep;
 
-        float newX = currentX - epsilon * currentY;
-        float newY = currentY + epsilon * newX;
+        float pointX = centre.x + radius * cosf(currentAngle);
+        float pointY = centre.y + radius * sinf(currentAngle);
 
-        currentX = newX;
-        currentY = newY;
+        vertices.emplace_back(pointX, pointY);
     }
 }
 
@@ -133,24 +129,24 @@ void InkDrop::vortex(const Point &pos, float z, float c, float r)
 {
     for (auto &v : vertices)
     {
-        Point P = v;
-        Point C = pos;
-
         float u = 1.0f / std::pow(2.0f, 1.0f / c);
-        float h = std::sqrt(std::pow(P.x - C.x, 2) + std::pow(P.y - C.y, 2));
+        // =distance from the vertex 'v' to the vortex center 'pos'
+        float h = std::sqrt(std::pow(v.x - pos.x, 2) + std::pow(v.y - pos.y, 2));
+
+        if (h == 0.0f)
+            continue;
+
         float i = z * std::pow(u, -r) * std::pow(u, h);
-        float a = i / std::abs(h);
+        float a = i / h; // Rotation angle
 
-        Point translatedPb = Point(P.x - C.x, P.y - C.y);
+        Point translatedV = Point(v.x - pos.x, v.y - pos.y);
 
-        float rotatedX = translatedPb.x * std::cos(a) + translatedPb.y * std::sin(a);
-        float rotatedY = -translatedPb.x * std::sin(a) + translatedPb.y * std::cos(a);
+        // 2D rotation
+        float rotatedX = translatedV.x * std::cos(a) - translatedV.y * std::sin(a);
+        float rotatedY = translatedV.x * std::sin(a) + translatedV.y * std::cos(a);
 
-        Point rotatedTranslatedP = Point(rotatedX, rotatedY);
-        C.x += rotatedTranslatedP.x;
-        C.y += rotatedTranslatedP.y;
-
-        v = Point(C.x, C.y);
+        v.x = pos.x + rotatedX;
+        v.y = pos.y + rotatedY;
     }
 }
 
