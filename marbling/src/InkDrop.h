@@ -2,7 +2,7 @@
 #define INKDROP_H
 
 #include <vector>
-#include "Point.h"
+#include "DataTypes.h"
 
 class InkDrop
 {
@@ -15,16 +15,16 @@ public:
     void tine(const Point &m, float x, float y, float z, float c);
 
     // --- Data access methods for the Renderer ---
-    const std::vector<Point> &getVertices() const;
-    void getColor(float &red, float &green, float &blue) const;
-    Point getCentre() const;
-    float getRadius() const;
+    const std::vector<Point> &getBoundary() const;
+    const Color &getColor() const;
+    Point getInitialCentre() const;
+    float getInitialRadius() const;
 
 private:
-    Point _centre;
-    float _radius;
-    float _r, _g, _b;
-    std::vector<Point> _vertices;
+    Point _initialCentre;
+    float _initialRadius;
+    Color _color;
+    std::vector<Point> _boundary;
 };
 
 #endif // INKDROP_H

@@ -16,7 +16,7 @@ public:
 
 private:
     void handleMouseInput(int button, int action, int mods);
-    void handleKeyInput(int key, int action, int mods);
+    void handleKeyInput(int key, int scancode, int action, int mods);
 
 private:
     GLFWwindow *_window;

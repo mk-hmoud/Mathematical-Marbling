@@ -1,13 +1,13 @@
 TARGET   = librenderer.so
 
 CC       = g++
-CFLAGS   = -Wall -std=c++17 -fPIC -I./src -I../utils/src -I../marbling/src
+CFLAGS   = -Wall -std=c++17 -fPIC -I./src -I../utils/src
 
 LINKER   = g++
 LFLAGS   = -shared
 
 LIB_DIRS = -L../lib
-LIBS     = -lutils -lmarbling -lGL -lGLU
+LIBS     = -lutils -lGL -lGLU
 
 SRCDIR   = src
 OBJDIR   = obj

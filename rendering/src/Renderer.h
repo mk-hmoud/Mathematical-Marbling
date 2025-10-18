@@ -1,15 +1,16 @@
 #ifndef RENDERER_H
 #define RENDERER_H
 
-#include "Canvas.h"
+#include <vector>
+#include "DataTypes.h"
 
 class Renderer
 {
 public:
     Renderer();
-    ~Renderer();
+    ~Renderer() = default;
 
-    void drawCanvas(const Canvas &canvas);
+    void drawPolygons(const std::vector<Polygon> &polygons);
     void drawDragLine(const Point &start, const Point &end);
     void setupProjection(int width, int height);
 };

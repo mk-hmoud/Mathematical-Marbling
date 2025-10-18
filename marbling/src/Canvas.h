@@ -2,7 +2,9 @@
 #define CANVAS_H
 
 #include <vector>
+#include "DataTypes.h"
 #include "InkDrop.h"
+#include <bits/stdc++.h>
 
 class Canvas
 {
@@ -14,7 +16,7 @@ public:
     void vortex(float x, float y, float z, float c, float r);
     void clear();
 
-    const std::vector<InkDrop> &getDrops() const;
+    std::vector<Polygon> getPolygons() const;
 
 private:
     float randomFloat(float lower, float upper);
@@ -22,6 +24,7 @@ private:
 private:
     int _width, _height;
     std::vector<InkDrop> _inkDrops;
+    std::mt19937 _rng;
 };
 
 #endif // CANVAS_H

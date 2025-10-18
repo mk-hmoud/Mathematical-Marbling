@@ -1,100 +1,89 @@
 #include "InkDrop.h"
 
 #include <cmath>
+#include <array>
 
-constexpr int NUM_VERTICES = 512 - (512 - 256) / 2;
+constexpr int NUM_VERTICES = 384;
 
 InkDrop::InkDrop(float x, float y, float radius, float r, float g, float b)
-    : _centre(x, y), _radius(radius), _r(r), _g(g), _b(b)
+    : _initialCentre(x, y), _initialRadius(radius), _color{r, g, b}
 {
-    _vertices.reserve(NUM_VERTICES);
-    float angleStep = 2.0f * M_PI / NUM_VERTICES;
+    _boundary.reserve(NUM_VERTICES);
+    float angleStep = 2.0f * static_cast<float>(M_PI) / static_cast<float>(NUM_VERTICES);
 
-    for (int i = 0; i < NUM_VERTICES; i++)
+    for (int i = 0; i < NUM_VERTICES; ++i)
     {
-        float currentAngle = i * angleStep;
-
-        float pointX = _centre.x + radius * cosf(currentAngle);
-        float pointY = _centre.y + radius * sinf(currentAngle);
-
-        _vertices.emplace_back(pointX, pointY);
+        float angle = static_cast<float>(i) * angleStep;
+        float px = x + radius * std::cosf(angle);
+        float py = y + radius * std::sinf(angle);
+        _boundary.emplace_back(px, py);
     }
 }
 
 void InkDrop::marbled(const InkDrop &other)
 {
-    Point c(other.getCentre());
-    for (auto &p : _vertices)
+    Point c = other.getInitialCentre();
+    float orad = other.getInitialRadius();
+    for (auto &p : _boundary)
     {
-        Point displacement = p - c;
-        float magnitude = std::sqrt(displacement.x * displacement.x + displacement.y * displacement.y);
-
-        float scaling = std::sqrt(1.0f + (other._radius * other._radius) / (magnitude * magnitude));
-        p = c + displacement * scaling;
+        Point disp = p - c;
+        float mag = disp.length();
+        if (mag < 1e-6f)
+            continue;
+        float scaling = std::sqrt(1.0f + (orad * orad) / (mag * mag));
+        p = c + disp * scaling;
     }
 }
 
-void InkDrop::tine(const Point &m, float x, float y, float z, float c)
+void InkDrop::tine(const Point &m, float bx, float by, float z, float c)
 {
+    Point b(bx, by);
+    Point n(-m.y, m.x);
     float u = 1.0f / std::pow(2.0f, 1.0f / c);
-    Point b(x, y);
-
-    for (auto &v : _vertices)
+    for (auto &v : _boundary)
     {
-        Point pb(v.x - b.x, v.y - b.y);
-        Point n(-m.y, m.x);
-
-        float d = std::abs(pb.x * n.x + pb.y * n.y);
+        Point pb = v - b;
+        float d = std::fabs(pb.dot(n));
         float mag = z * std::pow(u, d);
-
-        v.x += m.x * mag;
-        v.y += m.y * mag;
+        v = v + (m * mag);
     }
 }
 
 void InkDrop::vortex(const Point &pos, float z, float c, float r)
 {
-    for (auto &v : _vertices)
+    float u = 1.0f / std::pow(2.0f, 1.0f / c);
+    for (auto &v : _boundary)
     {
-        float u = 1.0f / std::pow(2.0f, 1.0f / c);
-        // =distance from the vertex 'v' to the vortex center 'pos'
-        float h = std::sqrt(std::pow(v.x - pos.x, 2) + std::pow(v.y - pos.y, 2));
-
+        Point translated = v - pos;
+        float h = translated.length();
         if (h == 0.0f)
             continue;
-
-        float i = z * std::pow(u, -r) * std::pow(u, h);
-        float a = i / h; // Rotation angle
-
-        Point translatedV = Point(v.x - pos.x, v.y - pos.y);
-
-        // 2D rotation
-        float rotatedX = translatedV.x * std::cos(a) - translatedV.y * std::sin(a);
-        float rotatedY = translatedV.x * std::sin(a) + translatedV.y * std::cos(a);
-
-        v.x = pos.x + rotatedX;
-        v.y = pos.y + rotatedY;
+        float i_val = z * std::pow(u, h - r);
+        float a = i_val / h;
+        float ca = std::cos(a);
+        float sa = std::sin(a);
+        float rx = translated.x * ca - translated.y * sa;
+        float ry = translated.x * sa + translated.y * ca;
+        v = pos + Point(rx, ry);
     }
 }
 
-void InkDrop::getColor(float &red, float &green, float &blue) const
+const std::vector<Point> &InkDrop::getBoundary() const
 {
-    red = _r;
-    green = _g;
-    blue = _b;
+    return _boundary;
 }
 
-const std::vector<Point> &InkDrop::getVertices() const
+const Color &InkDrop::getColor() const
 {
-    return _vertices;
+    return _color;
 }
 
-Point InkDrop::getCentre() const
+Point InkDrop::getInitialCentre() const
 {
-    return _centre;
+    return _initialCentre;
 }
 
-float InkDrop::getRadius() const
+float InkDrop::getInitialRadius() const
 {
-    return _radius;
+    return _initialRadius;
 }
