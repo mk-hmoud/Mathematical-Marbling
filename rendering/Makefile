@@ -2,12 +2,14 @@ TARGET   = librenderer.so
 
 CC       = g++
 CFLAGS   = -Wall -std=c++17 -fPIC -I./src -I../utils/src
+CFLAGS   += -I../external/glm-1.0.2 -I../external/earcut
+CFLAGS   += -g -fsanitize=address
 
 LINKER   = g++
-LFLAGS   = -shared
+LFLAGS   = -shared -fsanitize=address
 
 LIB_DIRS = -L../lib
-LIBS     = -lutils -lGL -lGLU
+LIBS     = -lutils -lGL
 
 SRCDIR   = src
 OBJDIR   = obj
