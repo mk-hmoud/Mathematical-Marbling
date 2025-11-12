@@ -1,10 +1,10 @@
 TARGET   = libmarbling.so
 
 CC       = g++
-CFLAGS   = -Wall -std=c++17 -fPIC -I./src -I../utils/src
+CFLAGS   = -Wall -std=c++17 -fPIC -I./src -I../utils/src -g -fsanitize=address
 
 LINKER   = g++
-LFLAGS   = -shared
+LFLAGS   = -shared -fsanitize=address
 
 LIB_DIRS = -L../lib
 LIBS     = -lutils

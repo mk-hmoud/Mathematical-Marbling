@@ -2,11 +2,11 @@ TARGET   = libutils.so
 
 CC       = g++
 # -fPIC is required for shared libraries
-CFLAGS   = -Wall -std=c++17 -fPIC -I./src
+CFLAGS   = -Wall -std=c++17 -fPIC -I./src -g -fsanitize=address
 
 LINKER   = g++
 # -shared flag for shared library
-LFLAGS   = -shared
+LFLAGS   = -shared -fsanitize=address
 
 LIB_DIRS =
 LIBS     =

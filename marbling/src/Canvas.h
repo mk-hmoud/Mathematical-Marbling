@@ -11,7 +11,7 @@ class Canvas
 public:
     Canvas(int width, int height);
 
-    void add_drop(float x, float y, float radius = 75.0f);
+    void add_drop(float x, float y, float radius = 75.0f, const Color &color = {1, 1, 1});
     void tine(const Point &start, const Point &end, float z, float c);
     void vortex(float x, float y, float z, float c, float r);
     void clear();
