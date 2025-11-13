@@ -5,7 +5,7 @@
 #include "Renderer.h"
 
 Application::Application(int width, int height, const char *title)
-    : _simulation(width, height), _tineMode(false), _isDragging(false), _startX(0), _startY(0)
+    : _simulation(width, height), _isDragging(false), _startX(0), _startY(0)
 {
     if (!glfwInit())
     {
@@ -79,36 +79,42 @@ void Application::handleMouseInput(int button, int action, int mods)
     ImGuiIO &io = ImGui::GetIO();
     if (io.WantCaptureMouse)
         return;
-
     if (button != GLFW_MOUSE_BUTTON_LEFT)
         return;
 
     double xpos, ypos;
     glfwGetCursorPos(_window, &xpos, &ypos);
+    Point endPos(static_cast<float>(xpos), static_cast<float>(ypos));
 
-    if (_tineMode)
+    if (action == GLFW_PRESS)
     {
-        if (action == GLFW_PRESS)
+        _isDragging = true;
+        _startX = xpos;
+        _startY = ypos;
+
+        if (_toolMode == ToolMode::Drop)
         {
-            _isDragging = true;
-            _startX = xpos;
-            _startY = ypos;
-        }
-        else if (action == GLFW_RELEASE)
-        {
-            if (_isDragging)
-            {
-                _simulation.tine(Point(static_cast<float>(_startX), static_cast<float>(_startY)),
-                                 Point(static_cast<float>(xpos), static_cast<float>(ypos)), 80.0f, 16.0f);
-                _isDragging = false;
-            }
+            _simulation.add_drop(endPos.x, endPos.y, _dropRadius, _nextDropColor);
         }
     }
-    else
+    else if (action == GLFW_RELEASE)
     {
-        if (action == GLFW_PRESS)
+        if (_isDragging)
         {
-            _simulation.add_drop(static_cast<float>(xpos), static_cast<float>(ypos), _dropRadius, _nextDropColor);
+            Point startPos(static_cast<float>(_startX), static_cast<float>(_startY));
+
+            switch (_toolMode)
+            {
+            case ToolMode::Tine:
+                _simulation.tine(startPos, endPos, _tineSettings);
+                break;
+            case ToolMode::Comb:
+                _simulation.comb(startPos, endPos, _combSettings);
+                break;
+            case ToolMode::Drop:
+                break;
+            }
+            _isDragging = false;
         }
     }
 }
@@ -118,32 +124,32 @@ void Application::handleKeyInput(int key, int scancode, int action, int mods)
     ImGuiIO &io = ImGui::GetIO();
     if (io.WantCaptureKeyboard)
         return;
-
     if (action != GLFW_PRESS)
         return;
 
     double mx, my;
     glfwGetCursorPos(_window, &mx, &my);
-    float xpos = static_cast<float>(mx);
-    float ypos = static_cast<float>(my);
+    Point pos(static_cast<float>(mx), static_cast<float>(my));
 
     switch (key)
     {
+    case GLFW_KEY_D:
+        _toolMode = ToolMode::Drop;
+        std::cout << "Tool: Ink Drop" << std::endl;
+        break;
     case GLFW_KEY_T:
-        _tineMode = !_tineMode;
-        _isDragging = false;
-        std::cout << "Tine Mode: " << (_tineMode ? "ON" : "OFF") << std::endl;
+        _toolMode = ToolMode::Tine;
+        std::cout << "Tool: Single Tine" << std::endl;
+        break;
+    case GLFW_KEY_C:
+        _toolMode = ToolMode::Comb;
+        std::cout << "Tool: Comb" << std::endl;
         break;
     case GLFW_KEY_BACKSPACE:
         _simulation.clear();
         break;
     case GLFW_KEY_V:
-        _simulation.vortex(xpos, ypos, _vortexStrength, 60.0f, _vortexRadius);
-        break;
-    case GLFW_KEY_S:
-        // TODO: Implement save
-        break;
-    default:
+        _simulation.vortex(pos, _vortexSettings);
         break;
     }
 }
@@ -173,25 +179,99 @@ void Application::run()
 
         if (_isDragging)
         {
-            double cx, cy;
-            glfwGetCursorPos(_window, &cx, &cy);
-            _renderer->drawDragLine(Point(static_cast<float>(_startX), static_cast<float>(_startY)),
-                                    Point(static_cast<float>(cx), static_cast<float>(cy)));
+            double currentMouseX, currentMouseY;
+            glfwGetCursorPos(_window, &currentMouseX, &currentMouseY);
+            Point dragStart(static_cast<float>(_startX), static_cast<float>(_startY));
+            Point dragEnd(static_cast<float>(currentMouseX), static_cast<float>(currentMouseY));
+
+            if (_toolMode == ToolMode::Tine)
+            {
+                // Draw a single drag line for the tine
+                _renderer->drawDragLine(dragStart, dragEnd);
+            }
+            else if (_toolMode == ToolMode::Comb)
+            {
+                std::vector<std::pair<Point, Point>> combLines;
+
+                Point direction = dragEnd - dragStart;
+                float length = direction.length();
+                if (length > 1e-6f) // Avoid division by zero
+                {
+                    direction.normalize();
+
+                    // Calculate the perpendicular vector for spacing
+                    Point perpendicular(-direction.y, direction.x);
+
+                    // Determine the "center" of the comb handle (midpoint of the drag line)
+                    Point combHandleCenter = dragStart + direction * (length / 2.0f);
+
+                    // Total width of the comb teeth
+                    float totalCombWidth = _combSettings.spacing * (static_cast<float>(_combSettings.numTines) - 1.0f);
+
+                    // Starting offset to center the comb
+                    Point offset = perpendicular * (totalCombWidth / 2.0f);
+
+                    for (int i = 0; i < _combSettings.numTines; ++i)
+                    {
+                        Point tineStart = combHandleCenter - offset + perpendicular * (static_cast<float>(i) * _combSettings.spacing);
+                        Point tineEnd = tineStart + direction * length; // Each tine has the same length as the drag
+
+                        combLines.push_back({tineStart, tineEnd});
+                    }
+                }
+                _renderer->drawCombLines(combLines, {1.0f, 1.0f, 1.0f}); // White comb lines
+            }
         }
 
         // --- GUI DRAWING ---
         {
             ImGui::Begin("Marbling Controls");
 
-            ImGui::Checkbox("Tine Mode (T)", &_tineMode);
+            ImGui::Text("Active Tool");
+            if (ImGui::RadioButton("Drop (D)", _toolMode == ToolMode::Drop))
+            {
+                _toolMode = ToolMode::Drop;
+            }
+            ImGui::SameLine();
+            if (ImGui::RadioButton("Tine (T)", _toolMode == ToolMode::Tine))
+            {
+                _toolMode = ToolMode::Tine;
+            }
+            ImGui::SameLine();
+            if (ImGui::RadioButton("Comb (C)", _toolMode == ToolMode::Comb))
+            {
+                _toolMode = ToolMode::Comb;
+            }
             ImGui::Separator();
-            ImGui::Text("Vortex (V)");
-            ImGui::SliderFloat("Strength", &_vortexStrength, 50.0f, 500.0f);
-            ImGui::SliderFloat("Radius", &_vortexRadius, 10.0f, 100.0f);
-            ImGui::Separator();
-            ImGui::Text("Next Ink Drop");
-            ImGui::SliderFloat("Drop Radius", &_dropRadius, 10.0f, 150.0f);
-            ImGui::ColorEdit3("Color", (float *)&_nextDropColor);
+
+            if (ImGui::CollapsingHeader("Drop Settings"))
+            {
+                ImGui::SliderFloat("Drop Radius", &_dropRadius, 10.0f, 150.0f);
+                ImGui::ColorEdit3("Drop Color", (float *)&_nextDropColor);
+            }
+
+            if (ImGui::CollapsingHeader("Tine Settings"))
+            {
+                ImGui::SliderFloat("Tine Strength (z)", &_tineSettings.z, 10.0f, 200.0f);
+                ImGui::SliderFloat("Tine Falloff (c)", &_tineSettings.c, 1.0f, 50.0f);
+            }
+
+            if (ImGui::CollapsingHeader("Comb Settings (New!)"))
+            {
+                ImGui::SliderInt("Num Tines", &_combSettings.numTines, 2, 50);
+                ImGui::SliderFloat("Tine Spacing", &_combSettings.spacing, 5.0f, 100.0f);
+                ImGui::Separator();
+                ImGui::SliderFloat("Comb Strength (z)", &_combSettings.properties.z, 10.0f, 200.0f);
+                ImGui::SliderFloat("Comb Falloff (c)", &_combSettings.properties.c, 1.0f, 50.0f);
+            }
+
+            if (ImGui::CollapsingHeader("Vortex Settings (V)"))
+            {
+                ImGui::SliderFloat("Vortex Strength (z)", &_vortexSettings.z, 50.0f, 500.0f);
+                ImGui::SliderFloat("Vortex C-Value (c)", &_vortexSettings.c, 10.0f, 100.0f);
+                ImGui::SliderFloat("Vortex Radius (r)", &_vortexSettings.r, 10.0f, 100.0f);
+            }
+
             ImGui::Separator();
             if (ImGui::Button("Clear Canvas (Backspace)"))
             {

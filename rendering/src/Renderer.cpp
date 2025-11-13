@@ -145,3 +145,34 @@ void Renderer::drawDragLine(const Point &start, const Point &end)
 
     glBindVertexArray(0);
 }
+
+void Renderer::drawCombLines(const std::vector<std::pair<Point, Point>> &combPoints, const Color &color)
+{
+    if (combPoints.empty())
+        return;
+
+    _shader.use();
+    _shader.setMat4("projection", _projection);
+    _shader.setVec4("drawColor", color.r, color.g, color.b, 1.0f);
+
+    glBindVertexArray(_vao);
+    glBindBuffer(GL_ARRAY_BUFFER, _vbo);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0); // Not using EBO for lines
+
+    // We need to flatten the vector of pairs into a single vector of Points
+    std::vector<Point> allLineVertices;
+    allLineVertices.reserve(combPoints.size() * 2);
+    for (const auto &line : combPoints)
+    {
+        allLineVertices.push_back(line.first);
+        allLineVertices.push_back(line.second);
+    }
+
+    glBufferData(GL_ARRAY_BUFFER, allLineVertices.size() * sizeof(Point), allLineVertices.data(), GL_DYNAMIC_DRAW);
+
+    glLineWidth(1.0f); // Default line width for the comb
+
+    glDrawArrays(GL_LINES, 0, (GLsizei)allLineVertices.size());
+
+    glBindVertexArray(0);
+}

@@ -32,13 +32,22 @@ private:
     std::unique_ptr<Renderer> _renderer;
 
     // Input state
-    bool _tineMode;
     bool _isDragging;
     double _startX, _startY;
 
+    enum class ToolMode
+    {
+        Drop,
+        Tine,
+        Comb
+    };
+    ToolMode _toolMode = ToolMode::Drop;
+
+    VortexSettings _vortexSettings;
+    TineSettings _tineSettings;
+    CombSettings _combSettings;
+
     // GUI state
-    float _vortexStrength = 200.0f;
-    float _vortexRadius = 50.0f;
     float _dropRadius = 75.0f;
     Color _nextDropColor = {1.0f, 0.2f, 0.2f};
 };

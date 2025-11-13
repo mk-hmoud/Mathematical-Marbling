@@ -12,8 +12,9 @@ public:
     Canvas(int width, int height);
 
     void add_drop(float x, float y, float radius = 75.0f, const Color &color = {1, 1, 1});
-    void tine(const Point &start, const Point &end, float z, float c);
-    void vortex(float x, float y, float z, float c, float r);
+    void tine(const Point &start, const Point &end, const TineSettings &settings);
+    void comb(const Point &start, const Point &end, const CombSettings &settings);
+    void vortex(const Point &pos, const VortexSettings &settings);
     void clear();
 
     std::vector<Polygon> getPolygons() const;

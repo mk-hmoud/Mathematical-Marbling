@@ -40,6 +40,13 @@ public:
     void drawDragLine(const Point &start, const Point &end);
 
     /**
+     * @brief Renders multiple parallel lines, representing a comb.
+     * @param combPoints A vector of pairs of points, where each pair (start, end) defines one tine.
+     * @param color The color to draw the comb lines.
+     */
+    void drawCombLines(const std::vector<std::pair<Point, Point>> &combPoints, const Color &color);
+
+    /**
      * @brief Calculates and sets the 2D orthographic projection matrix.
      * This replaces the legacy `glOrtho` call.
      * @param width The width of the viewport (in pixels).
