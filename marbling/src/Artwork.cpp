@@ -7,9 +7,7 @@ Artwork::Artwork(int width, int height)
 
 void Artwork::addDrop(const Point &center, float radius, const Color &color)
 {
-    DropOp op{center, radius, color};
-    apply(op);
-    _ops.push_back(op);
+    record(DropOp{center, radius, color});
 }
 
 void Artwork::addRandomDrop(float radius)
@@ -27,38 +25,37 @@ void Artwork::addRandomDrop(float radius)
 
 void Artwork::addTine(const Point &start, const Point &end, const TineSettings &settings)
 {
-    TineOp op{start, end, settings};
-    apply(op);
-    _ops.push_back(op);
+    record(TineOp{start, end, settings});
 }
 
 void Artwork::addComb(const Point &start, const Point &end, const CombSettings &settings)
 {
-    CombOp op{start, end, settings};
-    apply(op);
-    _ops.push_back(op);
+    record(CombOp{start, end, settings});
 }
 
 void Artwork::addVortex(const Point &pos, const VortexSettings &settings)
 {
-    VortexOp op{pos, settings};
-    apply(op);
-    _ops.push_back(op);
+    record(VortexOp{pos, settings});
 }
 
 void Artwork::clear()
 {
-    ClearOp op{};
-    apply(op);
+    record(ClearOp{});
+}
+
+void Artwork::record(const Operation &op)
+{
+    // A fresh edit starts a new branch: anything that was undone is discarded.
+    _redo.clear();
+    apply(op); // incremental: the canvas already reflects _ops
     _ops.push_back(op);
 }
 
 void Artwork::setOperations(const std::vector<Operation> &ops)
 {
     _ops = ops;
-    _canvas.clear();
-    for (const auto &op : _ops)
-        apply(op);
+    _redo.clear();
+    rebuild();
 }
 
 void Artwork::load(int width, int height, const std::vector<Operation> &ops)
@@ -66,6 +63,36 @@ void Artwork::load(int width, int height, const std::vector<Operation> &ops)
     _width = width;
     _height = height;
     setOperations(ops);
+}
+
+void Artwork::undo()
+{
+    if (_ops.empty())
+        return;
+
+    // Operations are not individually invertible, so step back by dropping the
+    // last one and replaying the rest from an empty canvas.
+    _redo.push_back(_ops.back());
+    _ops.pop_back();
+    rebuild();
+}
+
+void Artwork::redo()
+{
+    if (_redo.empty())
+        return;
+
+    const Operation op = _redo.back();
+    _redo.pop_back();
+    apply(op); // incremental: the canvas already reflects _ops
+    _ops.push_back(op);
+}
+
+void Artwork::rebuild()
+{
+    _canvas.clear();
+    for (const auto &op : _ops)
+        apply(op);
 }
 
 void Artwork::apply(const Operation &op)

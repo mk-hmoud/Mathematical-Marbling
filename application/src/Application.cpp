@@ -170,6 +170,19 @@ void Application::handleKeyInput(int key, int scancode, int action, int mods)
     case GLFW_KEY_V:
         _artwork.addVortex(pos, _vortexSettings);
         break;
+    case GLFW_KEY_Z:
+        if (mods & GLFW_MOD_CONTROL)
+        {
+            if (mods & GLFW_MOD_SHIFT)
+                _artwork.redo();
+            else
+                _artwork.undo();
+        }
+        break;
+    case GLFW_KEY_Y:
+        if (mods & GLFW_MOD_CONTROL)
+            _artwork.redo();
+        break;
     }
 }
 
@@ -319,6 +332,14 @@ void Application::run()
                 ImGui::Separator();
                 if (ImGui::MenuItem("Export PNG"))
                     exportPng();
+                ImGui::EndMenu();
+            }
+            if (ImGui::BeginMenu("Edit"))
+            {
+                if (ImGui::MenuItem("Undo", "Ctrl+Z", false, _artwork.canUndo()))
+                    _artwork.undo();
+                if (ImGui::MenuItem("Redo", "Ctrl+Shift+Z", false, _artwork.canRedo()))
+                    _artwork.redo();
                 ImGui::EndMenu();
             }
             if (ImGui::BeginMenu("Tools"))

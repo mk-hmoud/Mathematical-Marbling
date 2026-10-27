@@ -44,6 +44,15 @@ public:
      */
     void load(int width, int height, const std::vector<Operation> &ops);
 
+    // --- Undo / redo ---
+    bool canUndo() const { return !_ops.empty(); }
+    bool canRedo() const { return !_redo.empty(); }
+
+    /** @brief Reverts the most recent operation (replays the rest). */
+    void undo();
+    /** @brief Re-applies the most recently undone operation. */
+    void redo();
+
     // --- Accessors ---
     const std::vector<Operation> &operations() const { return _ops; }
     int width() const { return _width; }
@@ -55,12 +64,15 @@ public:
     void clearDirty() { _canvas.clearDirty(); }
 
 private:
-    void apply(const Operation &op);
+    void record(const Operation &op); // clear redo, apply, append to history
+    void apply(const Operation &op);  // apply one op to the canvas
+    void rebuild();                   // replay the whole active history
 
     int _width, _height;
     std::mt19937 _rng;
     Canvas _canvas;
-    std::vector<Operation> _ops;
+    std::vector<Operation> _ops;  // active history (oldest first)
+    std::vector<Operation> _redo; // undone ops (most recent at back)
 };
 
 #endif // ARTWORK_H
