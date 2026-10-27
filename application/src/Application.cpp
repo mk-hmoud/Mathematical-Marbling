@@ -188,7 +188,10 @@ void Application::handleKeyInput(int key, int scancode, int action, int mods)
 
 void Application::addRandomDrop()
 {
-    _artwork.addRandomDrop(_dropRadius);
+    if (_randomUsesPalette && !_palettes.empty())
+        _artwork.addRandomDrop(_dropRadius, _palettes[_activePalette].colors);
+    else
+        _artwork.addRandomDrop(_dropRadius);
 }
 
 void Application::exportPng()
@@ -374,10 +377,54 @@ void Application::run()
             ImGui::Text("Active Tool: %s", toolNames[static_cast<int>(_toolMode)]);
             ImGui::Separator();
 
+            if (ImGui::CollapsingHeader("Palette", ImGuiTreeNodeFlags_DefaultOpen))
+            {
+                if (!_palettes.empty())
+                {
+                    if (ImGui::BeginCombo("Set", _palettes[_activePalette].name.c_str()))
+                    {
+                        for (int i = 0; i < static_cast<int>(_palettes.size()); ++i)
+                        {
+                            const bool selected = (i == _activePalette);
+                            if (ImGui::Selectable(_palettes[i].name.c_str(), selected))
+                                _activePalette = i;
+                            if (selected)
+                                ImGui::SetItemDefaultFocus();
+                        }
+                        ImGui::EndCombo();
+                    }
+
+                    // Clickable swatches that set the active drop color. They
+                    // wrap to the window width.
+                    const std::vector<Color> &colors = _palettes[_activePalette].colors;
+                    const float swatch = 28.0f;
+                    const float visibleX = ImGui::GetWindowPos().x + ImGui::GetWindowContentRegionMax().x;
+                    const ImGuiStyle &style = ImGui::GetStyle();
+                    for (int i = 0; i < static_cast<int>(colors.size()); ++i)
+                    {
+                        ImGui::PushID(i);
+                        const ImVec4 col(colors[i].r, colors[i].g, colors[i].b, 1.0f);
+                        if (ImGui::ColorButton("##swatch", col, ImGuiColorEditFlags_NoTooltip,
+                                               ImVec2(swatch, swatch)))
+                        {
+                            _nextDropColor = colors[i];
+                        }
+                        ImGui::PopID();
+
+                        const float nextX = ImGui::GetItemRectMax().x + style.ItemSpacing.x + swatch;
+                        if (i + 1 < static_cast<int>(colors.size()) && nextX < visibleX)
+                            ImGui::SameLine();
+                    }
+                }
+
+                ImGui::ColorEdit3("Drop Color", (float *)&_nextDropColor);
+                ImGui::Checkbox("Random drops use palette", &_randomUsesPalette);
+            }
+
             if (ImGui::CollapsingHeader("Drop Settings"))
             {
                 ImGui::SliderFloat("Drop Radius", &_dropRadius, 10.0f, 150.0f);
-                ImGui::ColorEdit3("Drop Color", (float *)&_nextDropColor);
+                ImGui::ColorEdit3("Drop Color##settings", (float *)&_nextDropColor);
             }
 
             if (ImGui::CollapsingHeader("Tine Settings"))

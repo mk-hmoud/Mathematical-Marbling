@@ -13,6 +13,7 @@
 
 #include "Artwork.h"
 #include "Renderer.h"
+#include "Palette.h"
 
 class Renderer;
 
@@ -57,6 +58,11 @@ private:
     float _dropRadius = 75.0f;
     Color _nextDropColor = {1.0f, 0.2f, 0.2f};
     Color _backgroundColor = {0.07f, 0.07f, 0.09f};
+
+    // Palette state
+    std::vector<Palette> _palettes = builtinPalettes();
+    int _activePalette = 0;
+    bool _randomUsesPalette = true;
 
     // Export state
     char _exportPath[256] = "marbling.png";

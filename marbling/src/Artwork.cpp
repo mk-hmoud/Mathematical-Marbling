@@ -10,16 +10,25 @@ void Artwork::addDrop(const Point &center, float radius, const Color &color)
     record(DropOp{center, radius, color});
 }
 
-void Artwork::addRandomDrop(float radius)
+void Artwork::addRandomDrop(float radius, const std::vector<Color> &palette)
 {
     // Resolve the randomness here, then record a plain DropOp so replay is
     // deterministic.
     std::uniform_real_distribution<float> xDist(0.0f, static_cast<float>(_width));
     std::uniform_real_distribution<float> yDist(0.0f, static_cast<float>(_height));
-    std::uniform_real_distribution<float> colorDist(0.0f, 1.0f);
-
     Point center{xDist(_rng), yDist(_rng)};
-    Color color{colorDist(_rng), colorDist(_rng), colorDist(_rng)};
+
+    Color color;
+    if (palette.empty())
+    {
+        std::uniform_real_distribution<float> colorDist(0.0f, 1.0f);
+        color = {colorDist(_rng), colorDist(_rng), colorDist(_rng)};
+    }
+    else
+    {
+        std::uniform_int_distribution<size_t> pick(0, palette.size() - 1);
+        color = palette[pick(_rng)];
+    }
     addDrop(center, radius, color);
 }
 

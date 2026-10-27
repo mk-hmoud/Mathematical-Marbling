@@ -27,7 +27,14 @@ public:
 
     // --- Editing: records an operation and applies it to the canvas ---
     void addDrop(const Point &center, float radius, const Color &color);
-    void addRandomDrop(float radius = 75.0f);
+
+    /**
+     * @brief Adds a drop at a random position. If @p palette is non-empty the
+     * color is a random pick from it (harmonious); otherwise it is a random RGB.
+     * The resolved values are recorded as a plain DropOp, so replay stays
+     * deterministic.
+     */
+    void addRandomDrop(float radius = 75.0f, const std::vector<Color> &palette = {});
     void addTine(const Point &start, const Point &end, const TineSettings &settings);
     void addComb(const Point &start, const Point &end, const CombSettings &settings);
     void addVortex(const Point &pos, const VortexSettings &settings);
