@@ -1,20 +1,12 @@
 #include "Canvas.h"
 
-#include <random>
-
 // Below this many drops the thread-spawn overhead outweighs the work, so the
 // per-drop loops run serially.
 static constexpr int PARALLEL_THRESHOLD = 128;
 
 Canvas::Canvas(int width, int height)
-    : _width(width), _height(height), _rng(std::random_device{}())
+    : _width(width), _height(height)
 {
-}
-
-float Canvas::randomFloat(float lower, float upper)
-{
-    std::uniform_real_distribution<float> dist(lower, upper);
-    return dist(_rng);
 }
 
 void Canvas::add_drop(float x, float y, float radius, const Color &color)
@@ -28,14 +20,6 @@ void Canvas::add_drop(float x, float y, float radius, const Color &color)
     }
     _inkDrops.push_back(new_drop);
     _dirty = true;
-}
-
-void Canvas::add_random_drop(int width, int height, float radius)
-{
-    float x = randomFloat(0.0f, static_cast<float>(width));
-    float y = randomFloat(0.0f, static_cast<float>(height));
-    Color color{randomFloat(0.0f, 1.0f), randomFloat(0.0f, 1.0f), randomFloat(0.0f, 1.0f)};
-    add_drop(x, y, radius, color);
 }
 
 void Canvas::tine(const Point &start, const Point &end, const TineSettings &settings)

@@ -10,7 +10,7 @@
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
 
-#include "Canvas.h"
+#include "Artwork.h"
 #include "Renderer.h"
 
 class Renderer;
@@ -29,7 +29,7 @@ private:
 
 private:
     GLFWwindow *_window;
-    Canvas _simulation;
+    Artwork _artwork;
     std::unique_ptr<Renderer> _renderer;
 
     // Input state

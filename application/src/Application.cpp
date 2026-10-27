@@ -5,7 +5,7 @@
 #include "Renderer.h"
 
 Application::Application(int width, int height, const char *title)
-    : _window(nullptr), _simulation(width, height), _isDragging(false), _startX(0), _startY(0)
+    : _window(nullptr), _artwork(width, height), _isDragging(false), _startX(0), _startY(0)
 {
     if (!glfwInit())
     {
@@ -106,11 +106,11 @@ void Application::handleMouseInput(int button, int action, int mods)
 
         if (_toolMode == ToolMode::Drop)
         {
-            _simulation.add_drop(endPos.x, endPos.y, _dropRadius, _nextDropColor);
+            _artwork.addDrop(endPos, _dropRadius, _nextDropColor);
         }
         else if (_toolMode == ToolMode::Vortex)
         {
-            _simulation.vortex(endPos, _vortexSettings);
+            _artwork.addVortex(endPos, _vortexSettings);
         }
     }
     else if (action == GLFW_RELEASE)
@@ -122,10 +122,10 @@ void Application::handleMouseInput(int button, int action, int mods)
             switch (_toolMode)
             {
             case ToolMode::Tine:
-                _simulation.tine(startPos, endPos, _tineSettings);
+                _artwork.addTine(startPos, endPos, _tineSettings);
                 break;
             case ToolMode::Comb:
-                _simulation.comb(startPos, endPos, _combSettings);
+                _artwork.addComb(startPos, endPos, _combSettings);
                 break;
             case ToolMode::Drop:
             case ToolMode::Vortex:
@@ -163,19 +163,17 @@ void Application::handleKeyInput(int key, int scancode, int action, int mods)
         std::cout << "Tool: Comb" << std::endl;
         break;
     case GLFW_KEY_BACKSPACE:
-        _simulation.clear();
+        _artwork.clear();
         break;
     case GLFW_KEY_V:
-        _simulation.vortex(pos, _vortexSettings);
+        _artwork.addVortex(pos, _vortexSettings);
         break;
     }
 }
 
 void Application::addRandomDrop()
 {
-    int width, height;
-    glfwGetFramebufferSize(_window, &width, &height);
-    _simulation.add_random_drop(width, height, _dropRadius);
+    _artwork.addRandomDrop(_dropRadius);
 }
 
 void Application::run()
@@ -199,10 +197,10 @@ void Application::run()
         _renderer->setupProjection(width, height);
 
         // Re-tessellate and re-upload only when the ink geometry changed.
-        if (_simulation.isDirty())
+        if (_artwork.isDirty())
         {
-            _renderer->updateBatch(_simulation.getPolygons());
-            _simulation.clearDirty();
+            _renderer->updateBatch(_artwork.getPolygons());
+            _artwork.clearDirty();
         }
         _renderer->drawBatch();
 
@@ -273,7 +271,7 @@ void Application::run()
                     addRandomDrop();
                 ImGui::Separator();
                 if (ImGui::MenuItem("Clear Canvas", "Backspace"))
-                    _simulation.clear();
+                    _artwork.clear();
                 ImGui::EndMenu();
             }
             ImGui::EndMainMenuBar();
