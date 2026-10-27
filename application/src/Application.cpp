@@ -175,13 +175,7 @@ void Application::addRandomDrop()
 {
     int width, height;
     glfwGetFramebufferSize(_window, &width, &height);
-
-    std::uniform_real_distribution<float> xDist(0.0f, static_cast<float>(width));
-    std::uniform_real_distribution<float> yDist(0.0f, static_cast<float>(height));
-    std::uniform_real_distribution<float> colorDist(0.0f, 1.0f);
-
-    Color randomColor{colorDist(_rng), colorDist(_rng), colorDist(_rng)};
-    _simulation.add_drop(xDist(_rng), yDist(_rng), _dropRadius, randomColor);
+    _simulation.add_random_drop(width, height, _dropRadius);
 }
 
 void Application::run()
@@ -204,8 +198,13 @@ void Application::run()
 
         _renderer->setupProjection(width, height);
 
-        std::vector<Polygon> polygons = _simulation.getPolygons();
-        _renderer->drawPolygons(polygons);
+        // Re-tessellate and re-upload only when the ink geometry changed.
+        if (_simulation.isDirty())
+        {
+            _renderer->updateBatch(_simulation.getPolygons());
+            _simulation.clearDirty();
+        }
+        _renderer->drawBatch();
 
         if (_isDragging)
         {

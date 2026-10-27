@@ -23,14 +23,21 @@ public:
     ~Renderer();
 
     /**
-     * @brief Renders a list of complex, colored polygons.
-     * * This function uses `earcut.hpp` to tessellate the polygons
-     * on the CPU, then uploads the resulting vertices/indices
-     * to the GPU for efficient rendering.
+     * @brief Re-tessellates the polygons and uploads them to the GPU as a
+     * single batched vertex/index buffer (position + per-vertex color).
      *
-     * @param polygons A list of `Polygon` objects to be drawn.
+     * This is the expensive step (CPU tessellation + GPU upload) and should
+     * only be called when the geometry actually changes, not every frame.
+     *
+     * @param polygons A list of `Polygon` objects to cache for drawing.
      */
-    void drawPolygons(const std::vector<Polygon> &polygons);
+    void updateBatch(const std::vector<Polygon> &polygons);
+
+    /**
+     * @brief Draws the batch built by the last updateBatch() in one draw call.
+     * Cheap enough to call every frame.
+     */
+    void drawBatch();
 
     /**
      * @brief Renders a simple, single-colored line.
@@ -55,12 +62,20 @@ public:
     void setupProjection(int width, int height);
 
 private:
-    Shader _shader;
+    Shader _shader;         // uniform-color pipeline, used for lines
+    Shader _polygonShader;  // per-vertex-color pipeline, used for the ink batch
     glm::mat4 _projection;
 
+    // Line pipeline (drag line / comb preview): interleaved position only.
     GLuint _vao;
     GLuint _vbo;
     GLuint _ebo;
+
+    // Batched ink pipeline: interleaved position + color, drawn in one call.
+    GLuint _polyVao;
+    GLuint _polyVbo;
+    GLuint _polyEbo;
+    GLsizei _indexCount = 0;
 };
 
 #endif // RENDERER_H

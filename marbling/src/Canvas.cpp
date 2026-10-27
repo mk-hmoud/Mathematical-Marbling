@@ -21,6 +21,15 @@ void Canvas::add_drop(float x, float y, float radius, const Color &color)
         drop.marbled(new_drop);
     }
     _inkDrops.push_back(new_drop);
+    _dirty = true;
+}
+
+void Canvas::add_random_drop(int width, int height, float radius)
+{
+    float x = randomFloat(0.0f, static_cast<float>(width));
+    float y = randomFloat(0.0f, static_cast<float>(height));
+    Color color{randomFloat(0.0f, 1.0f), randomFloat(0.0f, 1.0f), randomFloat(0.0f, 1.0f)};
+    add_drop(x, y, radius, color);
 }
 
 void Canvas::tine(const Point &start, const Point &end, const TineSettings &settings)
@@ -34,6 +43,7 @@ void Canvas::tine(const Point &start, const Point &end, const TineSettings &sett
     {
         drop.tine(direction, start.x, start.y, settings.z, settings.c);
     }
+    _dirty = true;
 }
 
 void Canvas::comb(const Point &start, const Point &end, const CombSettings &settings)
@@ -68,6 +78,7 @@ void Canvas::comb(const Point &start, const Point &end, const CombSettings &sett
             drop.tine(direction, tineStart.x, tineStart.y, settings.properties.z, settings.properties.c);
         }
     }
+    _dirty = true;
 }
 
 void Canvas::vortex(const Point &pos, const VortexSettings &settings)
@@ -76,11 +87,13 @@ void Canvas::vortex(const Point &pos, const VortexSettings &settings)
     {
         drop.vortex(pos, settings.z, settings.c, settings.r);
     }
+    _dirty = true;
 }
 
 void Canvas::clear()
 {
     _inkDrops.clear();
+    _dirty = true;
 }
 
 std::vector<Polygon> Canvas::getPolygons() const
