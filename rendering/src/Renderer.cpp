@@ -198,10 +198,85 @@ void Renderer::drawBatch()
     glDisable(GL_BLEND);
 }
 
+void Renderer::drawBatchWithModel(const glm::mat4 &model)
+{
+    if (_indexCount == 0)
+        return;
+
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    _polygonShader.use();
+    _polygonShader.setMat4("projection", _projection * model);
+
+    glBindVertexArray(_polyVao);
+    glDrawElements(GL_TRIANGLES, _indexCount, GL_UNSIGNED_INT, (void *)0);
+    glBindVertexArray(0);
+
+    glDisable(GL_BLEND);
+}
+
+void Renderer::drawBatchSymmetric(Symmetry sym, int vpX, int vpY, int vpW, int vpH,
+                                  float coordW, float coordH)
+{
+    if (sym == Symmetry::None)
+    {
+        glEnable(GL_SCISSOR_TEST);
+        glScissor(vpX, vpY, vpW, vpH);
+        drawBatch();
+        return;
+    }
+
+    // Mirror transforms in canvas coordinates.
+    const glm::mat4 I(1.0f);
+    const glm::mat4 mx = glm::translate(glm::mat4(1.0f), glm::vec3(coordW, 0.0f, 0.0f)) *
+                         glm::scale(glm::mat4(1.0f), glm::vec3(-1.0f, 1.0f, 1.0f));
+    const glm::mat4 my = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, coordH, 0.0f)) *
+                         glm::scale(glm::mat4(1.0f), glm::vec3(1.0f, -1.0f, 1.0f));
+    const glm::mat4 mxy = glm::translate(glm::mat4(1.0f), glm::vec3(coordW, coordH, 0.0f)) *
+                          glm::scale(glm::mat4(1.0f), glm::vec3(-1.0f, -1.0f, 1.0f));
+
+    const int halfW = vpW / 2;
+    const int halfH = vpH / 2;
+    const int midX = vpX + halfW;
+    const int midY = vpY + halfH; // GL framebuffer center (bottom-left origin)
+
+    glEnable(GL_SCISSOR_TEST);
+
+    auto region = [&](int x, int y, int w, int h, const glm::mat4 &m)
+    {
+        glScissor(x, y, w, h);
+        drawBatchWithModel(m);
+    };
+
+    if (sym == Symmetry::MirrorX)
+    {
+        region(vpX, vpY, halfW, vpH, I);                 // left = source
+        region(midX, vpY, vpW - halfW, vpH, mx);         // right = mirror of left
+    }
+    else if (sym == Symmetry::MirrorY)
+    {
+        region(vpX, midY, vpW, vpH - halfH, I);          // top = source
+        region(vpX, vpY, vpW, halfH, my);                // bottom = mirror of top
+    }
+    else // Quad: top-left quadrant is the source
+    {
+        region(vpX, midY, halfW, vpH - halfH, I);        // top-left
+        region(midX, midY, vpW - halfW, vpH - halfH, mx); // top-right
+        region(vpX, vpY, halfW, halfH, my);              // bottom-left
+        region(midX, vpY, vpW - halfW, halfH, mxy);      // bottom-right
+    }
+
+    // Leave the scissor box set to the full canvas rect for any overlay.
+    glScissor(vpX, vpY, vpW, vpH);
+}
+
 std::vector<unsigned char> Renderer::renderToPixels(const std::vector<Polygon> &polygons,
                                                     int pixelWidth, int pixelHeight,
                                                     float coordWidth, float coordHeight,
-                                                    const Color &background)
+                                                    const Color &background,
+                                                    Symmetry symmetry,
+                                                    bool transparent)
 {
     if (pixelWidth <= 0 || pixelHeight <= 0)
         return {};
@@ -236,11 +311,15 @@ std::vector<unsigned char> Renderer::renderToPixels(const std::vector<Polygon> &
     {
         glViewport(0, 0, pixelWidth, pixelHeight);
         _projection = glm::ortho(0.0f, coordWidth, coordHeight, 0.0f, -1.0f, 1.0f);
-        glClearColor(background.r, background.g, background.b, 1.0f);
+        if (transparent)
+            glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+        else
+            glClearColor(background.r, background.g, background.b, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
 
         updateBatch(polygons);
-        drawBatch();
+        drawBatchSymmetric(symmetry, 0, 0, pixelWidth, pixelHeight, coordWidth, coordHeight);
+        glDisable(GL_SCISSOR_TEST);
 
         // --- Resolve the multisampled image into a regular texture FBO ---
         GLuint resolveFbo = 0, resolveTex = 0;

@@ -44,6 +44,7 @@ private:
     Point windowToCanvas(double windowX, double windowY) const;
 
     void exportPng();
+    void exportSvg();
     void saveProject();
     void loadProject();
 
@@ -108,9 +109,14 @@ private:
     bool _concentricDrop = false;
     int _ringCount = 4;
 
+    // View options
+    Symmetry _symmetry = Symmetry::None;
+
     // Export state
     char _exportPath[256] = "marbling.png";
+    char _svgPath[256] = "marbling.svg";
     float _exportScale = 2.0f;        // output = canvas size * scale
+    bool _exportTransparent = false;  // transparent background (PNG/SVG)
     std::string _exportStatus;        // last result, shown in the UI
 
     // Project (save/load) state

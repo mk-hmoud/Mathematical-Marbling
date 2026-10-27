@@ -63,6 +63,17 @@ struct Color
     float r, g, b;
 };
 
+/**
+ * @brief Mirror-symmetry mode applied when drawing/exporting the canvas.
+ */
+enum class Symmetry
+{
+    None,
+    MirrorX, // left/right reflection about the vertical center
+    MirrorY, // top/bottom reflection about the horizontal center
+    Quad     // reflection about both axes (4-fold)
+};
+
 struct Polygon
 {
     std::vector<Point> vertices;

@@ -5,6 +5,7 @@
 
 #include "Renderer.h"
 #include "PngWriter.h"
+#include "SvgWriter.h"
 #include "MarbleIO.h"
 
 Application::Application(int width, int height, const char *title)
@@ -450,7 +451,7 @@ void Application::exportPng()
     std::vector<unsigned char> pixels = _renderer->renderToPixels(
         _artwork.getPolygons(), pw, ph,
         static_cast<float>(_artwork.width()), static_cast<float>(_artwork.height()),
-        _backgroundColor);
+        _backgroundColor, _symmetry, _exportTransparent);
 
     if (pixels.empty())
     {
@@ -463,6 +464,17 @@ void Application::exportPng()
                         std::to_string(pw) + "x" + std::to_string(ph) + ")";
     else
         _exportStatus = std::string("Export failed: could not write ") + _exportPath;
+
+    std::cout << _exportStatus << std::endl;
+}
+
+void Application::exportSvg()
+{
+    if (writeSvg(_svgPath, _artwork.width(), _artwork.height(),
+                 _artwork.getPolygons(), _backgroundColor, _exportTransparent))
+        _exportStatus = std::string("Saved ") + _svgPath + " (vector)";
+    else
+        _exportStatus = std::string("Export failed: could not write ") + _svgPath;
 
     std::cout << _exportStatus << std::endl;
 }
@@ -565,7 +577,9 @@ void Application::run()
             _renderer->updateBatch(_artwork.getPolygons());
             _artwork.clearDirty();
         }
-        _renderer->drawBatch();
+        _renderer->drawBatchSymmetric(_symmetry, view.vpX, view.vpY, view.vpW, view.vpH,
+                                      static_cast<float>(_artwork.width()),
+                                      static_cast<float>(_artwork.height()));
 
         if (_isDragging)
         {
@@ -637,6 +651,15 @@ void Application::run()
             {
                 if (ImGui::MenuItem("Reset View", "0"))
                     resetView();
+                ImGui::Separator();
+                if (ImGui::MenuItem("Symmetry: None", nullptr, _symmetry == Symmetry::None))
+                    _symmetry = Symmetry::None;
+                if (ImGui::MenuItem("Symmetry: Mirror X", nullptr, _symmetry == Symmetry::MirrorX))
+                    _symmetry = Symmetry::MirrorX;
+                if (ImGui::MenuItem("Symmetry: Mirror Y", nullptr, _symmetry == Symmetry::MirrorY))
+                    _symmetry = Symmetry::MirrorY;
+                if (ImGui::MenuItem("Symmetry: Quad", nullptr, _symmetry == Symmetry::Quad))
+                    _symmetry = Symmetry::Quad;
                 ImGui::EndMenu();
             }
             if (ImGui::BeginMenu("Tools"))
@@ -841,15 +864,39 @@ void Application::run()
 
             if (ImGui::CollapsingHeader("Export", ImGuiTreeNodeFlags_DefaultOpen))
             {
-                ImGui::InputText("File", _exportPath, sizeof(_exportPath));
+                ImGui::InputText("PNG File", _exportPath, sizeof(_exportPath));
                 ImGui::SliderFloat("Scale", &_exportScale, 0.5f, 8.0f, "%.1fx");
+
+                // Quick scale presets.
+                if (ImGui::SmallButton("1x"))
+                    _exportScale = 1.0f;
+                ImGui::SameLine();
+                if (ImGui::SmallButton("2x"))
+                    _exportScale = 2.0f;
+                ImGui::SameLine();
+                if (ImGui::SmallButton("4x"))
+                    _exportScale = 4.0f;
+                ImGui::SameLine();
+                if (ImGui::SmallButton("Print (300dpi A4)"))
+                {
+                    // Scale so the long edge reaches ~3508 px (A4 @ 300dpi).
+                    const int longEdge = std::max(_artwork.width(), _artwork.height());
+                    _exportScale = 3508.0f / static_cast<float>(longEdge);
+                }
+
+                ImGui::Checkbox("Transparent background", &_exportTransparent);
                 ImGui::Text("Output: %d x %d px",
                             static_cast<int>(_artwork.width() * _exportScale),
                             static_cast<int>(_artwork.height() * _exportScale));
                 if (ImGui::Button("Export PNG"))
-                {
                     exportPng();
-                }
+
+                ImGui::Separator();
+                ImGui::InputText("SVG File", _svgPath, sizeof(_svgPath));
+                if (ImGui::Button("Export SVG (vector)"))
+                    exportSvg();
+                ImGui::TextDisabled("SVG ignores symmetry");
+
                 if (!_exportStatus.empty())
                     ImGui::TextWrapped("%s", _exportStatus.c_str());
             }

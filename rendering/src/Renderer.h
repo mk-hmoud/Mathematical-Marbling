@@ -40,6 +40,18 @@ public:
     void drawBatch();
 
     /**
+     * @brief Draws the batch with mirror symmetry, clipping each reflected copy
+     * to its region of the canvas viewport. Leaves the scissor box set to the
+     * full canvas rectangle (test enabled).
+     *
+     * @param sym Symmetry mode.
+     * @param vpX,vpY,vpW,vpH Canvas viewport rect in framebuffer pixels.
+     * @param coordW,coordH Canvas coordinate extents (for the mirror axes).
+     */
+    void drawBatchSymmetric(Symmetry sym, int vpX, int vpY, int vpW, int vpH,
+                            float coordW, float coordH);
+
+    /**
      * @brief Renders the polygons to an offscreen (multisampled) framebuffer at
      * an arbitrary resolution and returns the pixels, for resolution-independent
      * export. Does not touch the default framebuffer's contents.
@@ -55,7 +67,9 @@ public:
     std::vector<unsigned char> renderToPixels(const std::vector<Polygon> &polygons,
                                               int pixelWidth, int pixelHeight,
                                               float coordWidth, float coordHeight,
-                                              const Color &background);
+                                              const Color &background,
+                                              Symmetry symmetry = Symmetry::None,
+                                              bool transparent = false);
 
     /**
      * @brief Renders a simple, single-colored line.
@@ -88,6 +102,8 @@ public:
     void setView(int x, int y, int width, int height, float coordWidth, float coordHeight);
 
 private:
+    void drawBatchWithModel(const glm::mat4 &model); // projection * model, one draw
+
     Shader _shader;         // uniform-color pipeline, used for lines
     Shader _polygonShader;  // per-vertex-color pipeline, used for the ink batch
     glm::mat4 _projection;
