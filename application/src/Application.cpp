@@ -3,6 +3,7 @@
 #include <memory>
 
 #include "Renderer.h"
+#include "PngWriter.h"
 
 Application::Application(int width, int height, const char *title)
     : _window(nullptr), _artwork(width, height), _isDragging(false), _startX(0), _startY(0)
@@ -176,6 +177,32 @@ void Application::addRandomDrop()
     _artwork.addRandomDrop(_dropRadius);
 }
 
+void Application::exportPng()
+{
+    const float scale = _exportScale < 0.1f ? 0.1f : _exportScale;
+    const int pw = static_cast<int>(_artwork.width() * scale);
+    const int ph = static_cast<int>(_artwork.height() * scale);
+
+    std::vector<unsigned char> pixels = _renderer->renderToPixels(
+        _artwork.getPolygons(), pw, ph,
+        static_cast<float>(_artwork.width()), static_cast<float>(_artwork.height()),
+        _backgroundColor);
+
+    if (pixels.empty())
+    {
+        _exportStatus = "Export failed: could not render offscreen image.";
+        return;
+    }
+
+    if (writePng(_exportPath, pw, ph, pixels.data()))
+        _exportStatus = std::string("Saved ") + _exportPath + " (" +
+                        std::to_string(pw) + "x" + std::to_string(ph) + ")";
+    else
+        _exportStatus = std::string("Export failed: could not write ") + _exportPath;
+
+    std::cout << _exportStatus << std::endl;
+}
+
 void Application::run()
 {
     while (!glfwWindowShouldClose(_window))
@@ -253,6 +280,12 @@ void Application::run()
         // --- MENU BAR ---
         if (ImGui::BeginMainMenuBar())
         {
+            if (ImGui::BeginMenu("File"))
+            {
+                if (ImGui::MenuItem("Export PNG"))
+                    exportPng();
+                ImGui::EndMenu();
+            }
             if (ImGui::BeginMenu("Tools"))
             {
                 if (ImGui::MenuItem("Drop", "D", _toolMode == ToolMode::Drop))
@@ -316,6 +349,21 @@ void Application::run()
             if (ImGui::CollapsingHeader("Canvas", ImGuiTreeNodeFlags_DefaultOpen))
             {
                 ImGui::ColorEdit3("Background Color", (float *)&_backgroundColor);
+            }
+
+            if (ImGui::CollapsingHeader("Export", ImGuiTreeNodeFlags_DefaultOpen))
+            {
+                ImGui::InputText("File", _exportPath, sizeof(_exportPath));
+                ImGui::SliderFloat("Scale", &_exportScale, 0.5f, 8.0f, "%.1fx");
+                ImGui::Text("Output: %d x %d px",
+                            static_cast<int>(_artwork.width() * _exportScale),
+                            static_cast<int>(_artwork.height() * _exportScale));
+                if (ImGui::Button("Export PNG"))
+                {
+                    exportPng();
+                }
+                if (!_exportStatus.empty())
+                    ImGui::TextWrapped("%s", _exportStatus.c_str());
             }
 
             ImGui::Separator();

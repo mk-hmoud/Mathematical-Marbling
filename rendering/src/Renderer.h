@@ -40,6 +40,24 @@ public:
     void drawBatch();
 
     /**
+     * @brief Renders the polygons to an offscreen (multisampled) framebuffer at
+     * an arbitrary resolution and returns the pixels, for resolution-independent
+     * export. Does not touch the default framebuffer's contents.
+     *
+     * @param polygons    The scene to render.
+     * @param pixelWidth  Output image width in pixels.
+     * @param pixelHeight Output image height in pixels.
+     * @param coordWidth  Width of the artwork coordinate space to map across the image.
+     * @param coordHeight Height of the artwork coordinate space to map across the image.
+     * @param background  Background color to clear with.
+     * @return RGBA pixels, top row first (width*height*4 bytes), or empty on failure.
+     */
+    std::vector<unsigned char> renderToPixels(const std::vector<Polygon> &polygons,
+                                              int pixelWidth, int pixelHeight,
+                                              float coordWidth, float coordHeight,
+                                              const Color &background);
+
+    /**
      * @brief Renders a simple, single-colored line.
      * @param start The starting point of the line.
      * @param end The ending point of the line.

@@ -1,6 +1,7 @@
 #include "Renderer.h"
 #include <GL/glew.h>
 #include <glm/gtc/matrix_transform.hpp>
+#include <algorithm>
 
 #include "earcut.hpp"
 #include "TessAdapter.h"
@@ -189,6 +190,94 @@ void Renderer::drawBatch()
     glBindVertexArray(0);
 
     glDisable(GL_BLEND);
+}
+
+std::vector<unsigned char> Renderer::renderToPixels(const std::vector<Polygon> &polygons,
+                                                    int pixelWidth, int pixelHeight,
+                                                    float coordWidth, float coordHeight,
+                                                    const Color &background)
+{
+    if (pixelWidth <= 0 || pixelHeight <= 0)
+        return {};
+
+    // Clamp to what the driver can allocate, so an over-large export fails
+    // gracefully (scaled down) instead of producing an incomplete framebuffer.
+    GLint maxSize = 0;
+    glGetIntegerv(GL_MAX_RENDERBUFFER_SIZE, &maxSize);
+    if (maxSize > 0)
+    {
+        if (pixelWidth > maxSize)
+            pixelWidth = maxSize;
+        if (pixelHeight > maxSize)
+            pixelHeight = maxSize;
+    }
+
+    GLint maxSamples = 0;
+    glGetIntegerv(GL_MAX_SAMPLES, &maxSamples);
+    const GLsizei samples = static_cast<GLsizei>(maxSamples >= 4 ? 4 : maxSamples);
+
+    // --- Multisampled target to render into (smooth edges) ---
+    GLuint msFbo = 0, msColor = 0;
+    glGenFramebuffers(1, &msFbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, msFbo);
+    glGenRenderbuffers(1, &msColor);
+    glBindRenderbuffer(GL_RENDERBUFFER, msColor);
+    glRenderbufferStorageMultisample(GL_RENDERBUFFER, samples, GL_RGBA8, pixelWidth, pixelHeight);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, msColor);
+
+    std::vector<unsigned char> pixels;
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE)
+    {
+        glViewport(0, 0, pixelWidth, pixelHeight);
+        _projection = glm::ortho(0.0f, coordWidth, coordHeight, 0.0f, -1.0f, 1.0f);
+        glClearColor(background.r, background.g, background.b, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
+
+        updateBatch(polygons);
+        drawBatch();
+
+        // --- Resolve the multisampled image into a regular texture FBO ---
+        GLuint resolveFbo = 0, resolveTex = 0;
+        glGenTextures(1, &resolveTex);
+        glBindTexture(GL_TEXTURE_2D, resolveTex);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, pixelWidth, pixelHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+        glGenFramebuffers(1, &resolveFbo);
+        glBindFramebuffer(GL_FRAMEBUFFER, resolveFbo);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, resolveTex, 0);
+
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, msFbo);
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, resolveFbo);
+        glBlitFramebuffer(0, 0, pixelWidth, pixelHeight, 0, 0, pixelWidth, pixelHeight,
+                          GL_COLOR_BUFFER_BIT, GL_NEAREST);
+
+        // --- Read the resolved pixels back ---
+        glBindFramebuffer(GL_FRAMEBUFFER, resolveFbo);
+        glPixelStorei(GL_PACK_ALIGNMENT, 1);
+        const size_t rowBytes = static_cast<size_t>(pixelWidth) * 4;
+        std::vector<unsigned char> gl(static_cast<size_t>(pixelHeight) * rowBytes);
+        glReadPixels(0, 0, pixelWidth, pixelHeight, GL_RGBA, GL_UNSIGNED_BYTE, gl.data());
+
+        // OpenGL returns bottom-to-top; flip to top-first for image files.
+        pixels.resize(gl.size());
+        for (int y = 0; y < pixelHeight; ++y)
+        {
+            const unsigned char *src = gl.data() + static_cast<size_t>(pixelHeight - 1 - y) * rowBytes;
+            std::copy(src, src + rowBytes, pixels.data() + static_cast<size_t>(y) * rowBytes);
+        }
+
+        glDeleteFramebuffers(1, &resolveFbo);
+        glDeleteTextures(1, &resolveTex);
+    }
+
+    // Restore the default framebuffer; the main loop resets viewport/projection.
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glDeleteRenderbuffers(1, &msColor);
+    glDeleteFramebuffers(1, &msFbo);
+
+    return pixels;
 }
 
 void Renderer::drawDragLine(const Point &start, const Point &end)

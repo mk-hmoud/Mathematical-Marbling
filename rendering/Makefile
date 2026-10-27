@@ -9,7 +9,7 @@ LINKER   = g++
 LFLAGS   = -shared -fsanitize=address
 
 LIB_DIRS = -L../lib
-LIBS     = -lutils -lGL
+LIBS     = -lutils -lGL -lz
 
 SRCDIR   = src
 OBJDIR   = obj

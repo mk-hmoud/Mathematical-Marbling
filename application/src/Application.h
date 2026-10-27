@@ -2,6 +2,7 @@
 #define APPLICATION_H
 
 #include <memory>
+#include <string>
 
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
@@ -26,6 +27,7 @@ private:
     void handleMouseInput(int button, int action, int mods);
     void handleKeyInput(int key, int scancode, int action, int mods);
     void addRandomDrop();
+    void exportPng();
 
 private:
     GLFWwindow *_window;
@@ -53,6 +55,11 @@ private:
     float _dropRadius = 75.0f;
     Color _nextDropColor = {1.0f, 0.2f, 0.2f};
     Color _backgroundColor = {0.07f, 0.07f, 0.09f};
+
+    // Export state
+    char _exportPath[256] = "marbling.png";
+    float _exportScale = 2.0f;        // output = canvas size * scale
+    std::string _exportStatus;        // last result, shown in the UI
 };
 
 #endif // APPLICATION_H
