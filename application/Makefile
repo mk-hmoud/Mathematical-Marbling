@@ -11,7 +11,7 @@ LINKER   = g++
 LFLAGS   = -Wl,-rpath,'$$ORIGIN/../../lib' -fsanitize=address
 
 LIB_DIRS = -L../lib
-LIBS     = -lutils -lmarbling -lrenderer -lGLEW -lglfw -lGL -lm
+LIBS     = -lutils -lmarbling -lrenderer -lGLEW -lglfw -lGL -lX11 -lm
 
 SRCDIR   = src
 OBJDIR   = obj

@@ -31,9 +31,11 @@ Application::Application(int width, int height, const char *title)
     glfwSetWindowUserPointer(_window, this);
 
     glewExperimental = GL_TRUE;
-    if (glewInit() != GLEW_OK)
+    GLenum glewStatus = glewInit();
+    if (glewStatus != GLEW_OK && glewStatus != GLEW_ERROR_NO_GLX_DISPLAY)
     {
-        std::cerr << "Failed to initialize GLEW" << std::endl;
+        std::cerr << "Failed to initialize GLEW: "
+                  << glewGetErrorString(glewStatus) << std::endl;
         glfwDestroyWindow(_window);
         glfwTerminate();
         return;
