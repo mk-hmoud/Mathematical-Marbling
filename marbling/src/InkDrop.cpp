@@ -2,16 +2,31 @@
 
 #include <cmath>
 #include <array>
+#include <algorithm>
 
-constexpr int NUM_VERTICES = 384;
+namespace
+{
+    constexpr int MIN_VERTICES = 64;
+    constexpr int MAX_VERTICES = 384;
+
+    // Scale the boundary resolution with the drop's size: roughly one vertex
+    // per 2px of circumference, clamped so small drops stay cheap and large
+    // ones stay smooth.
+    int vertexCountForRadius(float radius)
+    {
+        int n = static_cast<int>(static_cast<float>(M_PI) * radius); // 2*pi*r / 2
+        return std::clamp(n, MIN_VERTICES, MAX_VERTICES);
+    }
+}
 
 InkDrop::InkDrop(float x, float y, float radius, float r, float g, float b)
     : _initialCentre(x, y), _initialRadius(radius), _color{r, g, b}
 {
-    _boundary.reserve(NUM_VERTICES);
-    float angleStep = 2.0f * static_cast<float>(M_PI) / static_cast<float>(NUM_VERTICES);
+    const int numVertices = vertexCountForRadius(radius);
+    _boundary.reserve(numVertices);
+    float angleStep = 2.0f * static_cast<float>(M_PI) / static_cast<float>(numVertices);
 
-    for (int i = 0; i < NUM_VERTICES; ++i)
+    for (int i = 0; i < numVertices; ++i)
     {
         float angle = static_cast<float>(i) * angleStep;
         float px = x + radius * std::cosf(angle);
