@@ -4,6 +4,7 @@
 
 #include "Renderer.h"
 #include "PngWriter.h"
+#include "MarbleIO.h"
 
 Application::Application(int width, int height, const char *title)
     : _window(nullptr), _artwork(width, height), _isDragging(false), _startX(0), _startY(0)
@@ -203,6 +204,35 @@ void Application::exportPng()
     std::cout << _exportStatus << std::endl;
 }
 
+void Application::saveProject()
+{
+    if (MarbleIO::save(_projectPath, _artwork.width(), _artwork.height(), _artwork.operations()))
+        _projectStatus = std::string("Saved ") + _projectPath + " (" +
+                         std::to_string(_artwork.operations().size()) + " ops)";
+    else
+        _projectStatus = std::string("Save failed: could not write ") + _projectPath;
+
+    std::cout << _projectStatus << std::endl;
+}
+
+void Application::loadProject()
+{
+    int width = 0, height = 0;
+    std::vector<Operation> ops;
+    if (MarbleIO::load(_projectPath, width, height, ops))
+    {
+        _artwork.load(width, height, ops);
+        _projectStatus = std::string("Loaded ") + _projectPath + " (" +
+                         std::to_string(ops.size()) + " ops)";
+    }
+    else
+    {
+        _projectStatus = std::string("Load failed: could not read ") + _projectPath;
+    }
+
+    std::cout << _projectStatus << std::endl;
+}
+
 void Application::run()
 {
     while (!glfwWindowShouldClose(_window))
@@ -282,6 +312,11 @@ void Application::run()
         {
             if (ImGui::BeginMenu("File"))
             {
+                if (ImGui::MenuItem("Save"))
+                    saveProject();
+                if (ImGui::MenuItem("Load"))
+                    loadProject();
+                ImGui::Separator();
                 if (ImGui::MenuItem("Export PNG"))
                     exportPng();
                 ImGui::EndMenu();
@@ -349,6 +384,18 @@ void Application::run()
             if (ImGui::CollapsingHeader("Canvas", ImGuiTreeNodeFlags_DefaultOpen))
             {
                 ImGui::ColorEdit3("Background Color", (float *)&_backgroundColor);
+            }
+
+            if (ImGui::CollapsingHeader("Project", ImGuiTreeNodeFlags_DefaultOpen))
+            {
+                ImGui::InputText("Path", _projectPath, sizeof(_projectPath));
+                if (ImGui::Button("Save"))
+                    saveProject();
+                ImGui::SameLine();
+                if (ImGui::Button("Load"))
+                    loadProject();
+                if (!_projectStatus.empty())
+                    ImGui::TextWrapped("%s", _projectStatus.c_str());
             }
 
             if (ImGui::CollapsingHeader("Export", ImGuiTreeNodeFlags_DefaultOpen))

@@ -28,6 +28,8 @@ private:
     void handleKeyInput(int key, int scancode, int action, int mods);
     void addRandomDrop();
     void exportPng();
+    void saveProject();
+    void loadProject();
 
 private:
     GLFWwindow *_window;
@@ -60,6 +62,10 @@ private:
     char _exportPath[256] = "marbling.png";
     float _exportScale = 2.0f;        // output = canvas size * scale
     std::string _exportStatus;        // last result, shown in the UI
+
+    // Project (save/load) state
+    char _projectPath[256] = "artwork.marble";
+    std::string _projectStatus;
 };
 
 #endif // APPLICATION_H

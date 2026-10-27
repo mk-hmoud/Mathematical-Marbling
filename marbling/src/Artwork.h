@@ -39,6 +39,11 @@ public:
      */
     void setOperations(const std::vector<Operation> &ops);
 
+    /**
+     * @brief Loads a piece: adopts a new canvas size and replays @p ops.
+     */
+    void load(int width, int height, const std::vector<Operation> &ops);
+
     // --- Accessors ---
     const std::vector<Operation> &operations() const { return _ops; }
     int width() const { return _width; }

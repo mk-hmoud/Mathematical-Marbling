@@ -61,6 +61,13 @@ void Artwork::setOperations(const std::vector<Operation> &ops)
         apply(op);
 }
 
+void Artwork::load(int width, int height, const std::vector<Operation> &ops)
+{
+    _width = width;
+    _height = height;
+    setOperations(ops);
+}
+
 void Artwork::apply(const Operation &op)
 {
     std::visit(
