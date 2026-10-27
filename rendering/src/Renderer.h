@@ -79,6 +79,14 @@ public:
      */
     void setupProjection(int width, int height);
 
+    /**
+     * @brief Sets the GL viewport rectangle (in framebuffer pixels) and an
+     * orthographic projection mapping [0,coordWidth]x[0,coordHeight] (top-left
+     * origin) across it. Used to draw a fixed-size canvas letterboxed inside a
+     * differently sized window.
+     */
+    void setView(int x, int y, int width, int height, float coordWidth, float coordHeight);
+
 private:
     Shader _shader;         // uniform-color pipeline, used for lines
     Shader _polygonShader;  // per-vertex-color pipeline, used for the ink batch

@@ -127,6 +127,12 @@ void Renderer::setupProjection(int width, int height)
     _projection = glm::ortho(0.0f, static_cast<float>(width), static_cast<float>(height), 0.0f, -1.0f, 1.0f);
 }
 
+void Renderer::setView(int x, int y, int width, int height, float coordWidth, float coordHeight)
+{
+    glViewport(x, y, width, height);
+    _projection = glm::ortho(0.0f, coordWidth, coordHeight, 0.0f, -1.0f, 1.0f);
+}
+
 void Renderer::updateBatch(const std::vector<Polygon> &polygons)
 {
     // Build one interleaved vertex buffer [x, y, r, g, b] and one index buffer

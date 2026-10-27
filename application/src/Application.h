@@ -28,6 +28,17 @@ private:
     void handleMouseInput(int button, int action, int mods);
     void handleKeyInput(int key, int scancode, int action, int mods);
     void addRandomDrop();
+
+    // How the fixed-size canvas is placed inside the window (framebuffer px).
+    struct CanvasView
+    {
+        float scale;             // canvas units -> framebuffer px
+        float offX, offY;        // top-left of the canvas rect, from the top-left
+        int vpX, vpY, vpW, vpH;  // GL viewport rect (bottom-left origin)
+    };
+    CanvasView canvasView(int fbWidth, int fbHeight) const;
+    Point windowToCanvas(double windowX, double windowY) const;
+
     void exportPng();
     void saveProject();
     void loadProject();
@@ -58,6 +69,12 @@ private:
     float _dropRadius = 75.0f;
     Color _nextDropColor = {1.0f, 0.2f, 0.2f};
     Color _backgroundColor = {0.07f, 0.07f, 0.09f};
+    // Color of the window area outside the canvas frame.
+    Color _outsideColor = {0.16f, 0.16f, 0.18f};
+
+    // Pending size for the "New Canvas" action (the live canvas size lives on
+    // the Artwork).
+    int _canvasSize[2] = {1200, 900};
 
     // Palette state
     std::vector<Palette> _palettes = builtinPalettes();

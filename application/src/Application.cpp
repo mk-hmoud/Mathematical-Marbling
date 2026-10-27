@@ -1,6 +1,7 @@
 #include "Application.h"
 #include <iostream>
 #include <memory>
+#include <algorithm>
 
 #include "Renderer.h"
 #include "PngWriter.h"
@@ -88,6 +89,49 @@ Application::~Application()
     glfwTerminate();
 }
 
+Application::CanvasView Application::canvasView(int fbWidth, int fbHeight) const
+{
+    const float cw = static_cast<float>(_artwork.width());
+    const float ch = static_cast<float>(_artwork.height());
+
+    // Fit the canvas inside the window, preserving aspect (letterbox).
+    float scale = std::min(fbWidth / cw, fbHeight / ch);
+    if (scale <= 0.0f)
+        scale = 1.0f;
+
+    const float drawW = cw * scale;
+    const float drawH = ch * scale;
+    const float offX = (fbWidth - drawW) * 0.5f;
+    const float offY = (fbHeight - drawH) * 0.5f; // from the top
+
+    CanvasView v;
+    v.scale = scale;
+    v.offX = offX;
+    v.offY = offY;
+    v.vpW = static_cast<int>(drawW);
+    v.vpH = static_cast<int>(drawH);
+    v.vpX = static_cast<int>(offX);
+    v.vpY = static_cast<int>(fbHeight - offY - drawH); // GL origin is bottom-left
+    return v;
+}
+
+Point Application::windowToCanvas(double windowX, double windowY) const
+{
+    int fbW = 0, fbH = 0, winW = 0, winH = 0;
+    glfwGetFramebufferSize(_window, &fbW, &fbH);
+    glfwGetWindowSize(_window, &winW, &winH);
+    if (winW == 0 || winH == 0)
+        return Point(0.0f, 0.0f);
+
+    // Cursor is in window coords; convert to framebuffer px (HiDPI-safe).
+    const double fx = windowX * static_cast<double>(fbW) / winW;
+    const double fy = windowY * static_cast<double>(fbH) / winH;
+
+    const CanvasView v = canvasView(fbW, fbH);
+    return Point(static_cast<float>((fx - v.offX) / v.scale),
+                 static_cast<float>((fy - v.offY) / v.scale));
+}
+
 void Application::handleMouseInput(int button, int action, int mods)
 {
     ImGuiIO &io = ImGui::GetIO();
@@ -98,13 +142,13 @@ void Application::handleMouseInput(int button, int action, int mods)
 
     double xpos, ypos;
     glfwGetCursorPos(_window, &xpos, &ypos);
-    Point endPos(static_cast<float>(xpos), static_cast<float>(ypos));
+    Point endPos = windowToCanvas(xpos, ypos); // canvas coordinates
 
     if (action == GLFW_PRESS)
     {
         _isDragging = true;
-        _startX = xpos;
-        _startY = ypos;
+        _startX = endPos.x;
+        _startY = endPos.y;
 
         if (_toolMode == ToolMode::Drop)
         {
@@ -148,7 +192,7 @@ void Application::handleKeyInput(int key, int scancode, int action, int mods)
 
     double mx, my;
     glfwGetCursorPos(_window, &mx, &my);
-    Point pos(static_cast<float>(mx), static_cast<float>(my));
+    Point pos = windowToCanvas(mx, my); // canvas coordinates
 
     switch (key)
     {
@@ -262,12 +306,23 @@ void Application::run()
         int width, height;
         glfwGetFramebufferSize(_window, &width, &height);
 
+        // Clear the whole window to the "outside" color.
+        glDisable(GL_SCISSOR_TEST);
         glViewport(0, 0, width, height);
-        glClearColor(_backgroundColor.r, _backgroundColor.g, _backgroundColor.b, 1.0f);
-
+        glClearColor(_outsideColor.r, _outsideColor.g, _outsideColor.b, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
 
-        _renderer->setupProjection(width, height);
+        // Confine drawing to the canvas rectangle and clear it to the canvas
+        // background, so the canvas reads as a framed panel in the window.
+        const CanvasView view = canvasView(width, height);
+        glEnable(GL_SCISSOR_TEST);
+        glScissor(view.vpX, view.vpY, view.vpW, view.vpH);
+        glClearColor(_backgroundColor.r, _backgroundColor.g, _backgroundColor.b, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
+
+        _renderer->setView(view.vpX, view.vpY, view.vpW, view.vpH,
+                           static_cast<float>(_artwork.width()),
+                           static_cast<float>(_artwork.height()));
 
         // Re-tessellate and re-upload only when the ink geometry changed.
         if (_artwork.isDirty())
@@ -282,7 +337,7 @@ void Application::run()
             double currentMouseX, currentMouseY;
             glfwGetCursorPos(_window, &currentMouseX, &currentMouseY);
             Point dragStart(static_cast<float>(_startX), static_cast<float>(_startY));
-            Point dragEnd(static_cast<float>(currentMouseX), static_cast<float>(currentMouseY));
+            Point dragEnd = windowToCanvas(currentMouseX, currentMouseY);
 
             if (_toolMode == ToolMode::Tine)
             {
@@ -322,6 +377,9 @@ void Application::run()
                 _renderer->drawCombLines(combLines, {1.0f, 1.0f, 1.0f}); // White comb lines
             }
         }
+
+        // Done with the canvas rectangle; let ImGui draw over the full window.
+        glDisable(GL_SCISSOR_TEST);
 
         // --- MENU BAR ---
         if (ImGui::BeginMainMenuBar())
@@ -452,6 +510,36 @@ void Application::run()
             if (ImGui::CollapsingHeader("Canvas", ImGuiTreeNodeFlags_DefaultOpen))
             {
                 ImGui::ColorEdit3("Background Color", (float *)&_backgroundColor);
+                ImGui::Text("Current: %d x %d", _artwork.width(), _artwork.height());
+
+                ImGui::InputInt2("Size", _canvasSize);
+
+                // Aspect-ratio presets (long edge ~1200).
+                struct Preset { const char *label; int w, h; };
+                static const Preset presets[] = {
+                    {"1:1", 1000, 1000}, {"4:3", 1200, 900}, {"3:2", 1200, 800},
+                    {"16:9", 1280, 720}, {"3:4", 900, 1200}};
+                for (int i = 0; i < 5; ++i)
+                {
+                    if (i > 0)
+                        ImGui::SameLine();
+                    if (ImGui::SmallButton(presets[i].label))
+                    {
+                        _canvasSize[0] = presets[i].w;
+                        _canvasSize[1] = presets[i].h;
+                    }
+                }
+
+                if (ImGui::Button("New Canvas"))
+                {
+                    const int w = std::clamp(_canvasSize[0], 16, 8192);
+                    const int h = std::clamp(_canvasSize[1], 16, 8192);
+                    _canvasSize[0] = w;
+                    _canvasSize[1] = h;
+                    _artwork.load(w, h, {}); // fresh canvas at the chosen size
+                }
+                ImGui::SameLine();
+                ImGui::TextDisabled("(clears the current piece)");
             }
 
             if (ImGui::CollapsingHeader("Project", ImGuiTreeNodeFlags_DefaultOpen))
