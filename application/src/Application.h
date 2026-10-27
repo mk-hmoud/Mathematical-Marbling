@@ -45,6 +45,7 @@ private:
 
     void exportPng();
     void exportSvg();
+    void exportTimelapse();
     void saveProject();
     void loadProject();
 
@@ -118,6 +119,10 @@ private:
     float _exportScale = 2.0f;        // output = canvas size * scale
     bool _exportTransparent = false;  // transparent background (PNG/SVG)
     std::string _exportStatus;        // last result, shown in the UI
+
+    // Timelapse (PNG frame sequence of the replay)
+    char _timelapseDir[256] = "timelapse";
+    int _timelapseFrames = 60;
 
     // Project (save/load) state
     char _projectPath[256] = "artwork.marble";

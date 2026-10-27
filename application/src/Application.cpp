@@ -2,6 +2,7 @@
 #include <iostream>
 #include <memory>
 #include <algorithm>
+#include <filesystem>
 
 #include "Renderer.h"
 #include "PngWriter.h"
@@ -479,6 +480,67 @@ void Application::exportSvg()
     std::cout << _exportStatus << std::endl;
 }
 
+void Application::exportTimelapse()
+{
+    const std::vector<Operation> &ops = _artwork.operations();
+    if (ops.empty())
+    {
+        _exportStatus = "Timelapse: nothing to replay.";
+        return;
+    }
+
+    const int frames = std::clamp(_timelapseFrames, 2, 600);
+    const int w = _artwork.width();
+    const int h = _artwork.height();
+    const float scale = _exportScale < 0.1f ? 0.1f : _exportScale;
+    const int pw = static_cast<int>(w * scale);
+    const int ph = static_cast<int>(h * scale);
+
+    std::error_code ec;
+    std::filesystem::create_directories(_timelapseDir, ec);
+
+    // Replay growing prefixes of the history into a temp artwork, mirroring the
+    // current recolor so frames match the live look.
+    Artwork frame(w, h);
+    if (_artwork.isRecolorActive())
+        frame.setRecolor(_artwork.recolorPalette());
+
+    int written = 0;
+    for (int f = 1; f <= frames; ++f)
+    {
+        size_t k = static_cast<size_t>(
+            static_cast<double>(f) / frames * ops.size() + 0.5);
+        k = std::clamp<size_t>(k, 1, ops.size());
+
+        frame.setOperations(std::vector<Operation>(ops.begin(), ops.begin() + k));
+
+        std::vector<unsigned char> px = _renderer->renderToPixels(
+            frame.getPolygons(), pw, ph, static_cast<float>(w), static_cast<float>(h),
+            _backgroundColor, _symmetry, _exportTransparent);
+        if (px.empty())
+        {
+            _exportStatus = "Timelapse failed: could not render a frame.";
+            return;
+        }
+
+        char name[512];
+        std::snprintf(name, sizeof(name), "%s/frame_%04d.png", _timelapseDir, f);
+        if (!writePng(name, pw, ph, px.data()))
+        {
+            _exportStatus = std::string("Timelapse failed: could not write ") + name;
+            return;
+        }
+        ++written;
+    }
+
+    // The final frame replayed the full history, so the renderer's batch still
+    // matches the live artwork; no re-upload needed.
+    _exportStatus = "Wrote " + std::to_string(written) + " frames to '" +
+                    _timelapseDir + "'. Assemble with: ffmpeg -r 30 -i " +
+                    _timelapseDir + "/frame_%04d.png timelapse.mp4";
+    std::cout << _exportStatus << std::endl;
+}
+
 void Application::saveProject()
 {
     if (MarbleIO::save(_projectPath, _artwork.width(), _artwork.height(), _artwork.operations()))
@@ -896,6 +958,12 @@ void Application::run()
                 if (ImGui::Button("Export SVG (vector)"))
                     exportSvg();
                 ImGui::TextDisabled("SVG ignores symmetry");
+
+                ImGui::Separator();
+                ImGui::InputText("Timelapse Dir", _timelapseDir, sizeof(_timelapseDir));
+                ImGui::SliderInt("Frames", &_timelapseFrames, 10, 300);
+                if (ImGui::Button("Export Timelapse (PNG frames)"))
+                    exportTimelapse();
 
                 if (!_exportStatus.empty())
                     ImGui::TextWrapped("%s", _exportStatus.c_str());

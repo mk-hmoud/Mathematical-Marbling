@@ -58,6 +58,7 @@ public:
     void setRecolor(const std::vector<Color> &palette);
     void clearRecolor();
     bool isRecolorActive() const { return _recolorActive; }
+    const std::vector<Color> &recolorPalette() const { return _recolorPalette; }
 
     // --- Undo / redo ---
     bool canUndo() const { return !_undoSteps.empty(); }
