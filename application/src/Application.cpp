@@ -98,6 +98,10 @@ void Application::handleMouseInput(int button, int action, int mods)
         {
             _simulation.add_drop(endPos.x, endPos.y, _dropRadius, _nextDropColor);
         }
+        else if (_toolMode == ToolMode::Vortex)
+        {
+            _simulation.vortex(endPos, _vortexSettings);
+        }
     }
     else if (action == GLFW_RELEASE)
     {
@@ -114,6 +118,7 @@ void Application::handleMouseInput(int button, int action, int mods)
                 _simulation.comb(startPos, endPos, _combSettings);
                 break;
             case ToolMode::Drop:
+            case ToolMode::Vortex:
                 break;
             }
             _isDragging = false;
@@ -156,6 +161,19 @@ void Application::handleKeyInput(int key, int scancode, int action, int mods)
     }
 }
 
+void Application::addRandomDrop()
+{
+    int width, height;
+    glfwGetFramebufferSize(_window, &width, &height);
+
+    std::uniform_real_distribution<float> xDist(0.0f, static_cast<float>(width));
+    std::uniform_real_distribution<float> yDist(0.0f, static_cast<float>(height));
+    std::uniform_real_distribution<float> colorDist(0.0f, 1.0f);
+
+    Color randomColor{colorDist(_rng), colorDist(_rng), colorDist(_rng)};
+    _simulation.add_drop(xDist(_rng), yDist(_rng), _dropRadius, randomColor);
+}
+
 void Application::run()
 {
     while (!glfwWindowShouldClose(_window))
@@ -170,7 +188,7 @@ void Application::run()
         glfwGetFramebufferSize(_window, &width, &height);
 
         glViewport(0, 0, width, height);
-        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+        glClearColor(_backgroundColor.r, _backgroundColor.g, _backgroundColor.b, 1.0f);
 
         glClear(GL_COLOR_BUFFER_BIT);
 
@@ -225,25 +243,39 @@ void Application::run()
             }
         }
 
+        // --- MENU BAR ---
+        if (ImGui::BeginMainMenuBar())
+        {
+            if (ImGui::BeginMenu("Tools"))
+            {
+                if (ImGui::MenuItem("Drop", "D", _toolMode == ToolMode::Drop))
+                    _toolMode = ToolMode::Drop;
+                if (ImGui::MenuItem("Tine", "T", _toolMode == ToolMode::Tine))
+                    _toolMode = ToolMode::Tine;
+                if (ImGui::MenuItem("Comb", "C", _toolMode == ToolMode::Comb))
+                    _toolMode = ToolMode::Comb;
+                if (ImGui::MenuItem("Vortex", "V", _toolMode == ToolMode::Vortex))
+                    _toolMode = ToolMode::Vortex;
+                ImGui::EndMenu();
+            }
+            if (ImGui::BeginMenu("Actions"))
+            {
+                if (ImGui::MenuItem("Add Random Ink Drop"))
+                    addRandomDrop();
+                ImGui::Separator();
+                if (ImGui::MenuItem("Clear Canvas", "Backspace"))
+                    _simulation.clear();
+                ImGui::EndMenu();
+            }
+            ImGui::EndMainMenuBar();
+        }
+
         // --- GUI DRAWING ---
         {
             ImGui::Begin("Marbling Controls");
 
-            ImGui::Text("Active Tool");
-            if (ImGui::RadioButton("Drop (D)", _toolMode == ToolMode::Drop))
-            {
-                _toolMode = ToolMode::Drop;
-            }
-            ImGui::SameLine();
-            if (ImGui::RadioButton("Tine (T)", _toolMode == ToolMode::Tine))
-            {
-                _toolMode = ToolMode::Tine;
-            }
-            ImGui::SameLine();
-            if (ImGui::RadioButton("Comb (C)", _toolMode == ToolMode::Comb))
-            {
-                _toolMode = ToolMode::Comb;
-            }
+            const char *toolNames[] = {"Drop", "Tine", "Comb", "Vortex"};
+            ImGui::Text("Active Tool: %s", toolNames[static_cast<int>(_toolMode)]);
             ImGui::Separator();
 
             if (ImGui::CollapsingHeader("Drop Settings"))
@@ -267,17 +299,22 @@ void Application::run()
                 ImGui::SliderFloat("Comb Falloff (c)", &_combSettings.properties.c, 1.0f, 50.0f);
             }
 
-            if (ImGui::CollapsingHeader("Vortex Settings (V)"))
+            if (ImGui::CollapsingHeader("Vortex Settings"))
             {
                 ImGui::SliderFloat("Vortex Strength (z)", &_vortexSettings.z, 50.0f, 500.0f);
                 ImGui::SliderFloat("Vortex C-Value (c)", &_vortexSettings.c, 10.0f, 100.0f);
                 ImGui::SliderFloat("Vortex Radius (r)", &_vortexSettings.r, 10.0f, 100.0f);
             }
 
-            ImGui::Separator();
-            if (ImGui::Button("Clear Canvas (Backspace)"))
+            if (ImGui::CollapsingHeader("Canvas", ImGuiTreeNodeFlags_DefaultOpen))
             {
-                _simulation.clear();
+                ImGui::ColorEdit3("Background Color", (float *)&_backgroundColor);
+            }
+
+            ImGui::Separator();
+            if (ImGui::Button("Add Random Ink Drop"))
+            {
+                addRandomDrop();
             }
             ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
             ImGui::End();
