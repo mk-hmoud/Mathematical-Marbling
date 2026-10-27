@@ -5,7 +5,7 @@
 #include "Renderer.h"
 
 Application::Application(int width, int height, const char *title)
-    : _simulation(width, height), _isDragging(false), _startX(0), _startY(0)
+    : _window(nullptr), _simulation(width, height), _isDragging(false), _startX(0), _startY(0)
 {
     if (!glfwInit())
     {
@@ -37,6 +37,7 @@ Application::Application(int width, int height, const char *title)
         std::cerr << "Failed to initialize GLEW: "
                   << glewGetErrorString(glewStatus) << std::endl;
         glfwDestroyWindow(_window);
+        _window = nullptr;
         glfwTerminate();
         return;
     }
@@ -72,7 +73,16 @@ Application::Application(int width, int height, const char *title)
 
 Application::~Application()
 {
-    glfwDestroyWindow(_window);
+    if (_window)
+    {
+        ImGui_ImplOpenGL3_Shutdown();
+        ImGui_ImplGlfw_Shutdown();
+        ImGui::DestroyContext();
+
+        _renderer.reset();
+
+        glfwDestroyWindow(_window);
+    }
     glfwTerminate();
 }
 
