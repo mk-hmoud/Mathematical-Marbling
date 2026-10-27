@@ -1,0 +1,22 @@
+# LeakSanitizer suppressions for third-party libraries that are pulled in by
+# GLFW's windowing/decoration path on Linux (libdecor-gtk, fontconfig, pango,
+# glib, cairo). These libraries allocate process-lifetime caches and font data
+# that they never free at exit. The leaks are not in this project's code.
+#
+# Usage:
+#   LSAN_OPTIONS=suppressions=application/lsan.supp ./application/bin/marbling_app
+
+leak:libfontconfig
+leak:libpango
+leak:libpangocairo
+leak:libpangoft2
+leak:libcairo
+leak:libgtk-3
+leak:libgdk-3
+leak:libgdk_pixbuf
+leak:libgio-2.0
+leak:libglib-2.0
+leak:libgobject-2.0
+leak:libdecor
+leak:fc_thread_func
+leak:g_thread_proxy

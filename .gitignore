@@ -1,4 +1,14 @@
+# Editor / IDE
 .vscode/
+
+# Build artifacts
 **/obj
 application/bin
 lib
+
+# Legacy build output (older single-directory build)
+Bin/
+Build/
+
+# Runtime-generated
+imgui.ini
