@@ -56,10 +56,41 @@ void Artwork::clear()
 void Artwork::record(const Operation &op)
 {
     // A fresh edit starts a new branch: anything that was undone is discarded.
-    _redo.clear();
+    // (For a batch this was already cleared in beginBatch.)
+    if (!_batchActive)
+    {
+        _redo.clear();
+        _redoSteps.clear();
+    }
+
     apply(op); // incremental: the canvas already reflects _ops
     _ops.push_back(op);
+
+    if (_batchActive)
+        ++_batchCount;
+    else
+        _undoSteps.push_back(1);
+
     _dirty = true;
+}
+
+void Artwork::beginBatch()
+{
+    // A batch is a fresh edit, so it discards any redo branch up front.
+    _redo.clear();
+    _redoSteps.clear();
+    _batchActive = true;
+    _batchCount = 0;
+}
+
+void Artwork::endBatch()
+{
+    if (!_batchActive)
+        return;
+    if (_batchCount > 0)
+        _undoSteps.push_back(_batchCount);
+    _batchActive = false;
+    _batchCount = 0;
 }
 
 void Artwork::previewTine(const Point &start, const Point &end, const TineSettings &settings)
@@ -99,6 +130,11 @@ void Artwork::setOperations(const std::vector<Operation> &ops)
 {
     _ops = ops;
     _redo.clear();
+    _redoSteps.clear();
+    // Each loaded op becomes its own undo step.
+    _undoSteps.assign(_ops.size(), 1);
+    _batchActive = false;
+    _batchCount = 0;
     _previewActive = false;
     rebuild();
 }
@@ -112,26 +148,36 @@ void Artwork::load(int width, int height, const std::vector<Operation> &ops)
 
 void Artwork::undo()
 {
-    if (_ops.empty())
+    if (_undoSteps.empty())
         return;
 
     // Operations are not individually invertible, so step back by dropping the
-    // last one and replaying the rest from an empty canvas.
-    _redo.push_back(_ops.back());
-    _ops.pop_back();
+    // last step's ops and replaying the rest from an empty canvas. The group is
+    // moved to the redo stack preserving its original order.
+    const size_t n = _undoSteps.back();
+    _undoSteps.pop_back();
+    const size_t start = _ops.size() - n;
+    _redo.insert(_redo.end(), _ops.begin() + start, _ops.end());
+    _redoSteps.push_back(n);
+    _ops.erase(_ops.begin() + start, _ops.end());
     rebuild();
-    _dirty = true;
 }
 
 void Artwork::redo()
 {
-    if (_redo.empty())
+    if (_redoSteps.empty())
         return;
 
-    const Operation op = _redo.back();
-    _redo.pop_back();
-    apply(op); // incremental: the canvas already reflects _ops
-    _ops.push_back(op);
+    const size_t n = _redoSteps.back();
+    _redoSteps.pop_back();
+    const size_t start = _redo.size() - n;
+    for (size_t i = start; i < _redo.size(); ++i)
+    {
+        apply(_redo[i]); // incremental, in original order
+        _ops.push_back(_redo[i]);
+    }
+    _redo.erase(_redo.begin() + start, _redo.end());
+    _undoSteps.push_back(n);
     _dirty = true;
 }
 

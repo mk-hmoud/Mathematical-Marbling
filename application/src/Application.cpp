@@ -316,6 +316,82 @@ void Application::addRandomDrop()
         _artwork.addRandomDrop(_dropRadius);
 }
 
+namespace
+{
+    // A comb spanning `span` perpendicular to its pull, with the given tooth
+    // spacing and shared tine properties.
+    CombSettings spanningComb(float span, float spacing, const TineSettings &props)
+    {
+        CombSettings c;
+        c.spacing = spacing;
+        c.numTines = std::max(2, static_cast<int>(span / spacing));
+        c.properties = props;
+        return c;
+    }
+}
+
+void Application::applyStone()
+{
+    // Scatter a field of displacing drops: the classic marbled "stone" base.
+    const float radius = std::min(_artwork.width(), _artwork.height()) / 8.0f;
+    const std::vector<Color> palette =
+        (!_palettes.empty()) ? _palettes[_activePalette].colors : std::vector<Color>{};
+
+    _artwork.beginBatch();
+    for (int i = 0; i < _stoneDrops; ++i)
+        _artwork.addRandomDrop(radius, palette);
+    _artwork.endBatch();
+}
+
+void Application::applyNonpareil()
+{
+    const float cw = static_cast<float>(_artwork.width());
+    const float ch = static_cast<float>(_artwork.height());
+
+    _artwork.beginBatch();
+    // Fine comb pulled down (teeth across the width), then across (teeth down).
+    _artwork.addComb(Point(cw * 0.5f, 0.0f), Point(cw * 0.5f, ch),
+                     spanningComb(cw, _patternSpacing, _combSettings.properties));
+    _artwork.addComb(Point(0.0f, ch * 0.5f), Point(cw, ch * 0.5f),
+                     spanningComb(ch, _patternSpacing, _combSettings.properties));
+    _artwork.endBatch();
+}
+
+void Application::applyGelGit()
+{
+    const float cw = static_cast<float>(_artwork.width());
+    const float ch = static_cast<float>(_artwork.height());
+
+    _artwork.beginBatch();
+    // Back-and-forth vertical passes, each offset half a tooth, which shears
+    // the ink into interlocking waves.
+    for (int p = 0; p < 3; ++p)
+    {
+        const float x = cw * 0.5f + (p % 2) * _patternSpacing * 0.5f;
+        const CombSettings c = spanningComb(cw, _patternSpacing, _combSettings.properties);
+        if (p % 2 == 0)
+            _artwork.addComb(Point(x, 0.0f), Point(x, ch), c); // pull down
+        else
+            _artwork.addComb(Point(x, ch), Point(x, 0.0f), c); // pull up
+    }
+    _artwork.endBatch();
+}
+
+void Application::applyChevron()
+{
+    const float cw = static_cast<float>(_artwork.width());
+    const float ch = static_cast<float>(_artwork.height());
+    const float diag = std::sqrt(cw * cw + ch * ch);
+
+    _artwork.beginBatch();
+    // A vertical comb, then a diagonal comb crossing it, forming chevrons.
+    _artwork.addComb(Point(cw * 0.5f, 0.0f), Point(cw * 0.5f, ch),
+                     spanningComb(cw, _patternSpacing, _combSettings.properties));
+    _artwork.addComb(Point(0.0f, 0.0f), Point(cw, ch),
+                     spanningComb(diag, _patternSpacing, _combSettings.properties));
+    _artwork.endBatch();
+}
+
 void Application::exportPng()
 {
     const float scale = _exportScale < 0.1f ? 0.1f : _exportScale;
@@ -535,6 +611,18 @@ void Application::run()
                     _artwork.clear();
                 ImGui::EndMenu();
             }
+            if (ImGui::BeginMenu("Patterns"))
+            {
+                if (ImGui::MenuItem("Stone (scatter)"))
+                    applyStone();
+                if (ImGui::MenuItem("Nonpareil"))
+                    applyNonpareil();
+                if (ImGui::MenuItem("Gel-git"))
+                    applyGelGit();
+                if (ImGui::MenuItem("Chevron"))
+                    applyChevron();
+                ImGui::EndMenu();
+            }
             ImGui::EndMainMenuBar();
         }
 
@@ -616,6 +704,22 @@ void Application::run()
                 ImGui::SliderFloat("Vortex Strength (z)", &_vortexSettings.z, 50.0f, 500.0f);
                 ImGui::SliderFloat("Vortex C-Value (c)", &_vortexSettings.c, 10.0f, 100.0f);
                 ImGui::SliderFloat("Vortex Radius (r)", &_vortexSettings.r, 10.0f, 100.0f);
+            }
+
+            if (ImGui::CollapsingHeader("Patterns", ImGuiTreeNodeFlags_DefaultOpen))
+            {
+                ImGui::SliderFloat("Comb Spacing", &_patternSpacing, 10.0f, 120.0f);
+                ImGui::SliderInt("Stone Drops", &_stoneDrops, 5, 200);
+                if (ImGui::Button("Stone"))
+                    applyStone();
+                ImGui::SameLine();
+                if (ImGui::Button("Nonpareil"))
+                    applyNonpareil();
+                if (ImGui::Button("Gel-git"))
+                    applyGelGit();
+                ImGui::SameLine();
+                if (ImGui::Button("Chevron"))
+                    applyChevron();
             }
 
             if (ImGui::CollapsingHeader("Canvas", ImGuiTreeNodeFlags_DefaultOpen))

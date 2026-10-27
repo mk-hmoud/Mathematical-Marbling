@@ -52,13 +52,19 @@ public:
     void load(int width, int height, const std::vector<Operation> &ops);
 
     // --- Undo / redo ---
-    bool canUndo() const { return !_ops.empty(); }
-    bool canRedo() const { return !_redo.empty(); }
+    bool canUndo() const { return !_undoSteps.empty(); }
+    bool canRedo() const { return !_redoSteps.empty(); }
 
-    /** @brief Reverts the most recent operation (replays the rest). */
+    /** @brief Reverts the most recent step (one op, or one batch). */
     void undo();
-    /** @brief Re-applies the most recently undone operation. */
+    /** @brief Re-applies the most recently undone step. */
     void redo();
+
+    // --- Operation grouping ---
+    // Operations recorded between beginBatch() and endBatch() collapse into a
+    // single undo/redo step, so a multi-op pattern undoes in one action.
+    void beginBatch();
+    void endBatch();
 
     // --- Live gesture preview ---
     // Shows the result of an in-progress operation without recording it, so a
@@ -93,7 +99,11 @@ private:
     Canvas _canvas;         // committed geometry
     Canvas _previewCanvas;  // committed geometry + the in-progress gesture
     std::vector<Operation> _ops;  // active history (oldest first)
-    std::vector<Operation> _redo; // undone ops (most recent at back)
+    std::vector<Operation> _redo; // undone ops (grouped, in original order)
+    std::vector<size_t> _undoSteps; // op-count per undoable step; sums to _ops
+    std::vector<size_t> _redoSteps; // op-count per redoable step; sums to _redo
+    bool _batchActive = false;
+    size_t _batchCount = 0; // ops recorded in the current batch
     bool _previewActive = false;
     bool _dirty = true;     // geometry changed since the last clearDirty()
 };

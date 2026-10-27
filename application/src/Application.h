@@ -45,6 +45,12 @@ private:
     void saveProject();
     void loadProject();
 
+    // Authentic marbling patterns (full-canvas gestures, one undo step each).
+    void applyStone();
+    void applyNonpareil();
+    void applyGelGit();
+    void applyChevron();
+
 private:
     GLFWwindow *_window;
     Artwork _artwork;
@@ -74,6 +80,10 @@ private:
     VortexSettings _vortexSettings;
     TineSettings _tineSettings;
     CombSettings _combSettings;
+
+    // Pattern controls
+    float _patternSpacing = 30.0f; // comb tooth spacing used by patterns
+    int _stoneDrops = 40;          // drops dispensed by the Stone fill
 
     // GUI state
     float _dropRadius = 75.0f;
