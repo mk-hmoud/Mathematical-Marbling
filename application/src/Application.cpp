@@ -57,6 +57,16 @@ Application::Application(int width, int height, const char *title)
         auto *app = static_cast<Application *>(glfwGetWindowUserPointer(win));
         if (app) app->handleKeyInput(key, scancode, action, mods); });
 
+    glfwSetScrollCallback(_window, [](GLFWwindow *win, double xoffset, double yoffset)
+                          {
+        auto *app = static_cast<Application *>(glfwGetWindowUserPointer(win));
+        if (app) app->handleScroll(xoffset, yoffset); });
+
+    // Cap zoom so the canvas viewport never exceeds the driver's limit.
+    GLint viewportDims[2] = {8192, 8192};
+    glGetIntegerv(GL_MAX_VIEWPORT_DIMS, viewportDims);
+    _maxViewportDim = std::min(viewportDims[0], viewportDims[1]);
+
     // --- IMGUI INIT ---
     const char *glsl_version = "#version 330";
     IMGUI_CHECKVERSION();
@@ -94,15 +104,17 @@ Application::CanvasView Application::canvasView(int fbWidth, int fbHeight) const
     const float cw = static_cast<float>(_artwork.width());
     const float ch = static_cast<float>(_artwork.height());
 
-    // Fit the canvas inside the window, preserving aspect (letterbox).
-    float scale = std::min(fbWidth / cw, fbHeight / ch);
-    if (scale <= 0.0f)
-        scale = 1.0f;
+    // Fit the canvas inside the window, preserving aspect (letterbox), then
+    // apply the current zoom and pan.
+    float fit = std::min(fbWidth / cw, fbHeight / ch);
+    if (fit <= 0.0f)
+        fit = 1.0f;
+    const float scale = fit * _zoom;
 
     const float drawW = cw * scale;
     const float drawH = ch * scale;
-    const float offX = (fbWidth - drawW) * 0.5f;
-    const float offY = (fbHeight - drawH) * 0.5f; // from the top
+    const float offX = (fbWidth - drawW) * 0.5f + _panX;
+    const float offY = (fbHeight - drawH) * 0.5f + _panY; // from the top
 
     CanvasView v;
     v.scale = scale;
@@ -132,11 +144,73 @@ Point Application::windowToCanvas(double windowX, double windowY) const
                  static_cast<float>((fy - v.offY) / v.scale));
 }
 
+void Application::handleScroll(double xoffset, double yoffset)
+{
+    (void)xoffset;
+    ImGuiIO &io = ImGui::GetIO();
+    if (io.WantCaptureMouse || yoffset == 0.0)
+        return;
+
+    int fbW = 0, fbH = 0, winW = 0, winH = 0;
+    glfwGetFramebufferSize(_window, &fbW, &fbH);
+    glfwGetWindowSize(_window, &winW, &winH);
+    if (winW == 0 || winH == 0)
+        return;
+
+    double mx = 0.0, my = 0.0;
+    glfwGetCursorPos(_window, &mx, &my);
+    const Point anchor = windowToCanvas(mx, my); // canvas point under cursor
+
+    // Clamp zoom to a sane range and to what keeps the viewport within limits.
+    const float cw = static_cast<float>(_artwork.width());
+    const float ch = static_cast<float>(_artwork.height());
+    const float fit = std::min(fbW / cw, fbH / ch);
+    const float zoomCap = std::min(_maxViewportDim / (cw * fit), _maxViewportDim / (ch * fit));
+
+    const float factor = (yoffset > 0.0) ? 1.1f : 1.0f / 1.1f;
+    float newZoom = std::clamp(_zoom * factor, 0.2f, std::min(20.0f, zoomCap));
+    if (newZoom == _zoom)
+        return;
+    _zoom = newZoom;
+
+    // Re-pan so the anchored canvas point stays under the cursor.
+    const double fx = mx * static_cast<double>(fbW) / winW;
+    const double fy = my * static_cast<double>(fbH) / winH;
+    const float scale = fit * _zoom;
+    const float drawW = cw * scale;
+    const float drawH = ch * scale;
+    _panX = static_cast<float>(fx) - anchor.x * scale - (fbW - drawW) * 0.5f;
+    _panY = static_cast<float>(fy) - anchor.y * scale - (fbH - drawH) * 0.5f;
+}
+
+void Application::resetView()
+{
+    _zoom = 1.0f;
+    _panX = 0.0f;
+    _panY = 0.0f;
+}
+
 void Application::handleMouseInput(int button, int action, int mods)
 {
     ImGuiIO &io = ImGui::GetIO();
     if (io.WantCaptureMouse)
         return;
+
+    // Middle-button drag pans the view.
+    if (button == GLFW_MOUSE_BUTTON_MIDDLE)
+    {
+        if (action == GLFW_PRESS)
+        {
+            _isPanning = true;
+            glfwGetCursorPos(_window, &_panLastX, &_panLastY);
+        }
+        else if (action == GLFW_RELEASE)
+        {
+            _isPanning = false;
+        }
+        return;
+    }
+
     if (button != GLFW_MOUSE_BUTTON_LEFT)
         return;
 
@@ -228,6 +302,9 @@ void Application::handleKeyInput(int key, int scancode, int action, int mods)
         if (mods & GLFW_MOD_CONTROL)
             _artwork.redo();
         break;
+    case GLFW_KEY_0:
+        resetView();
+        break;
     }
 }
 
@@ -306,6 +383,22 @@ void Application::run()
 
         int width, height;
         glfwGetFramebufferSize(_window, &width, &height);
+
+        // Apply any middle-button pan (delta in framebuffer px).
+        if (_isPanning)
+        {
+            int winW = 0, winH = 0;
+            glfwGetWindowSize(_window, &winW, &winH);
+            double mx = 0.0, my = 0.0;
+            glfwGetCursorPos(_window, &mx, &my);
+            if (winW > 0 && winH > 0)
+            {
+                _panX += static_cast<float>((mx - _panLastX) * width / winW);
+                _panY += static_cast<float>((my - _panLastY) * height / winH);
+            }
+            _panLastX = mx;
+            _panLastY = my;
+        }
 
         // Clear the whole window to the "outside" color.
         glDisable(GL_SCISSOR_TEST);
@@ -413,6 +506,12 @@ void Application::run()
                     _artwork.undo();
                 if (ImGui::MenuItem("Redo", "Ctrl+Shift+Z", false, _artwork.canRedo()))
                     _artwork.redo();
+                ImGui::EndMenu();
+            }
+            if (ImGui::BeginMenu("View"))
+            {
+                if (ImGui::MenuItem("Reset View", "0"))
+                    resetView();
                 ImGui::EndMenu();
             }
             if (ImGui::BeginMenu("Tools"))
@@ -523,6 +622,10 @@ void Application::run()
             {
                 ImGui::ColorEdit3("Background Color", (float *)&_backgroundColor);
                 ImGui::Text("Current: %d x %d", _artwork.width(), _artwork.height());
+                ImGui::Text("Zoom: %.0f%%  (scroll to zoom, middle-drag to pan)", _zoom * 100.0f);
+                ImGui::SameLine();
+                if (ImGui::SmallButton("Reset View"))
+                    resetView();
 
                 ImGui::InputInt2("Size", _canvasSize);
 

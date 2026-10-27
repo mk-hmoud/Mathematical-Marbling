@@ -27,6 +27,8 @@ public:
 private:
     void handleMouseInput(int button, int action, int mods);
     void handleKeyInput(int key, int scancode, int action, int mods);
+    void handleScroll(double xoffset, double yoffset);
+    void resetView();
     void addRandomDrop();
 
     // How the fixed-size canvas is placed inside the window (framebuffer px).
@@ -51,6 +53,14 @@ private:
     // Input state
     bool _isDragging;
     double _startX, _startY;
+
+    // View (zoom/pan) state
+    float _zoom = 1.0f;         // multiplies the fit-to-window scale
+    float _panX = 0.0f;         // canvas offset in framebuffer px
+    float _panY = 0.0f;
+    bool _isPanning = false;
+    double _panLastX = 0.0, _panLastY = 0.0;
+    GLint _maxViewportDim = 8192; // queried at startup; caps zoom
 
     enum class ToolMode
     {
