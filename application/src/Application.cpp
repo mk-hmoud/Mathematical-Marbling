@@ -226,11 +226,15 @@ void Application::handleMouseInput(int button, int action, int mods)
 
         if (_toolMode == ToolMode::Drop)
         {
-            _artwork.addDrop(endPos, _dropRadius, _nextDropColor);
+            placeDrop(endPos);
         }
         else if (_toolMode == ToolMode::Vortex)
         {
             _artwork.addVortex(endPos, _vortexSettings);
+        }
+        else if (_toolMode == ToolMode::Eyedropper)
+        {
+            pickColor(xpos, ypos);
         }
     }
     else if (action == GLFW_RELEASE)
@@ -249,6 +253,7 @@ void Application::handleMouseInput(int button, int action, int mods)
                 break;
             case ToolMode::Drop:
             case ToolMode::Vortex:
+            case ToolMode::Eyedropper:
                 break;
             }
             _artwork.endPreview(); // committed op now shows from the real canvas
@@ -279,6 +284,10 @@ void Application::handleKeyInput(int key, int scancode, int action, int mods)
         _toolMode = ToolMode::Tine;
         std::cout << "Tool: Single Tine" << std::endl;
         break;
+    case GLFW_KEY_E:
+        _toolMode = ToolMode::Eyedropper;
+        std::cout << "Tool: Eyedropper" << std::endl;
+        break;
     case GLFW_KEY_C:
         _toolMode = ToolMode::Comb;
         std::cout << "Tool: Comb" << std::endl;
@@ -306,6 +315,46 @@ void Application::handleKeyInput(int key, int scancode, int action, int mods)
         resetView();
         break;
     }
+}
+
+void Application::placeDrop(const Point &center)
+{
+    if (!_concentricDrop)
+    {
+        _artwork.addDrop(center, _dropRadius, _nextDropColor);
+        return;
+    }
+
+    // Concentric rings: drop decreasing radii at the same point, each inner
+    // drop pushing the previous outward into a ring. Colors cycle through the
+    // active palette (falling back to the current drop color).
+    const std::vector<Color> &pal =
+        (!_palettes.empty()) ? _palettes[_activePalette].colors : std::vector<Color>{};
+
+    _artwork.beginBatch();
+    for (int i = 0; i < _ringCount; ++i)
+    {
+        const float r = _dropRadius * (1.0f - static_cast<float>(i) / _ringCount);
+        const Color c = pal.empty() ? _nextDropColor : pal[i % pal.size()];
+        _artwork.addDrop(center, r, c);
+    }
+    _artwork.endBatch();
+}
+
+void Application::pickColor(double windowX, double windowY)
+{
+    int fbW = 0, fbH = 0, winW = 0, winH = 0;
+    glfwGetFramebufferSize(_window, &fbW, &fbH);
+    glfwGetWindowSize(_window, &winW, &winH);
+    if (winW == 0 || winH == 0)
+        return;
+
+    // Read the rendered pixel under the cursor (GL origin is bottom-left).
+    const int px = static_cast<int>(windowX * fbW / winW);
+    const int py = static_cast<int>(fbH - windowY * fbH / winH);
+    unsigned char rgba[4] = {0, 0, 0, 0};
+    glReadPixels(px, py, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
+    _nextDropColor = {rgba[0] / 255.0f, rgba[1] / 255.0f, rgba[2] / 255.0f};
 }
 
 void Application::addRandomDrop()
@@ -600,6 +649,8 @@ void Application::run()
                     _toolMode = ToolMode::Comb;
                 if (ImGui::MenuItem("Vortex", "V", _toolMode == ToolMode::Vortex))
                     _toolMode = ToolMode::Vortex;
+                if (ImGui::MenuItem("Eyedropper", "E", _toolMode == ToolMode::Eyedropper))
+                    _toolMode = ToolMode::Eyedropper;
                 ImGui::EndMenu();
             }
             if (ImGui::BeginMenu("Actions"))
@@ -630,7 +681,7 @@ void Application::run()
         {
             ImGui::Begin("Marbling Controls");
 
-            const char *toolNames[] = {"Drop", "Tine", "Comb", "Vortex"};
+            const char *toolNames[] = {"Drop", "Tine", "Comb", "Vortex", "Eyedropper"};
             ImGui::Text("Active Tool: %s", toolNames[static_cast<int>(_toolMode)]);
             ImGui::Separator();
 
@@ -676,6 +727,21 @@ void Application::run()
 
                 ImGui::ColorEdit3("Drop Color", (float *)&_nextDropColor);
                 ImGui::Checkbox("Random drops use palette", &_randomUsesPalette);
+
+                ImGui::Separator();
+                ImGui::Checkbox("Concentric rings", &_concentricDrop);
+                if (_concentricDrop)
+                    ImGui::SliderInt("Rings", &_ringCount, 2, 10);
+
+                ImGui::Separator();
+                // Nondestructive recolor: re-skin the whole piece to this palette.
+                if (!_palettes.empty() && ImGui::Button("Recolor to this palette"))
+                    _artwork.setRecolor(_palettes[_activePalette].colors);
+                ImGui::SameLine();
+                if (ImGui::Button("Restore colors"))
+                    _artwork.clearRecolor();
+                if (_artwork.isRecolorActive())
+                    ImGui::TextDisabled("Recolor active (original colors preserved)");
             }
 
             if (ImGui::CollapsingHeader("Drop Settings"))

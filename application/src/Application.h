@@ -29,6 +29,8 @@ private:
     void handleKeyInput(int key, int scancode, int action, int mods);
     void handleScroll(double xoffset, double yoffset);
     void resetView();
+    void placeDrop(const Point &center); // single drop or concentric rings
+    void pickColor(double windowX, double windowY); // eyedropper
     void addRandomDrop();
 
     // How the fixed-size canvas is placed inside the window (framebuffer px).
@@ -73,7 +75,8 @@ private:
         Drop,
         Tine,
         Comb,
-        Vortex
+        Vortex,
+        Eyedropper
     };
     ToolMode _toolMode = ToolMode::Drop;
 
@@ -100,6 +103,10 @@ private:
     std::vector<Palette> _palettes = builtinPalettes();
     int _activePalette = 0;
     bool _randomUsesPalette = true;
+
+    // Concentric ring drops (marbled "stone"/flower primitive)
+    bool _concentricDrop = false;
+    int _ringCount = 4;
 
     // Export state
     char _exportPath[256] = "marbling.png";

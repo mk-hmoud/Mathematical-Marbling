@@ -51,6 +51,14 @@ public:
      */
     void load(int width, int height, const std::vector<Operation> &ops);
 
+    // --- Nondestructive recolor ---
+    // Re-skins the whole piece by remapping every drop color to its nearest
+    // match in @p palette at replay time. The recorded operations keep their
+    // original colors, so this is fully reversible via clearRecolor().
+    void setRecolor(const std::vector<Color> &palette);
+    void clearRecolor();
+    bool isRecolorActive() const { return _recolorActive; }
+
     // --- Undo / redo ---
     bool canUndo() const { return !_undoSteps.empty(); }
     bool canRedo() const { return !_redoSteps.empty(); }
@@ -93,6 +101,7 @@ private:
     void record(const Operation &op); // clear redo, apply, append to history
     void apply(const Operation &op);  // apply one op to the canvas
     void rebuild();                   // replay the whole active history
+    Color mapColor(const Color &c) const; // recolor remap (identity if off)
 
     int _width, _height;
     std::mt19937 _rng;
@@ -106,6 +115,9 @@ private:
     size_t _batchCount = 0; // ops recorded in the current batch
     bool _previewActive = false;
     bool _dirty = true;     // geometry changed since the last clearDirty()
+
+    bool _recolorActive = false;
+    std::vector<Color> _recolorPalette; // target palette for nearest-remap
 };
 
 #endif // ARTWORK_H

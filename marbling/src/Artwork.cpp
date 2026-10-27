@@ -146,6 +146,46 @@ void Artwork::load(int width, int height, const std::vector<Operation> &ops)
     setOperations(ops);
 }
 
+void Artwork::setRecolor(const std::vector<Color> &palette)
+{
+    if (palette.empty())
+    {
+        clearRecolor();
+        return;
+    }
+    _recolorPalette = palette;
+    _recolorActive = true;
+    rebuild();
+}
+
+void Artwork::clearRecolor()
+{
+    _recolorActive = false;
+    _recolorPalette.clear();
+    rebuild();
+}
+
+Color Artwork::mapColor(const Color &c) const
+{
+    if (!_recolorActive || _recolorPalette.empty())
+        return c;
+
+    // Nearest color in the target palette (squared Euclidean distance in RGB).
+    const Color *best = &_recolorPalette.front();
+    float bestDist = 1e30f;
+    for (const Color &p : _recolorPalette)
+    {
+        const float dr = p.r - c.r, dg = p.g - c.g, db = p.b - c.b;
+        const float d = dr * dr + dg * dg + db * db;
+        if (d < bestDist)
+        {
+            bestDist = d;
+            best = &p;
+        }
+    }
+    return *best;
+}
+
 void Artwork::undo()
 {
     if (_undoSteps.empty())
@@ -196,7 +236,7 @@ void Artwork::apply(const Operation &op)
         {
             using T = std::decay_t<decltype(o)>;
             if constexpr (std::is_same_v<T, DropOp>)
-                _canvas.add_drop(o.center.x, o.center.y, o.radius, o.color);
+                _canvas.add_drop(o.center.x, o.center.y, o.radius, mapColor(o.color));
             else if constexpr (std::is_same_v<T, TineOp>)
                 _canvas.tine(o.start, o.end, o.settings);
             else if constexpr (std::is_same_v<T, CombOp>)
