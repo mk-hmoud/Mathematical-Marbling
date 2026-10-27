@@ -177,6 +177,7 @@ void Application::handleMouseInput(int button, int action, int mods)
             case ToolMode::Vortex:
                 break;
             }
+            _artwork.endPreview(); // committed op now shows from the real canvas
             _isDragging = false;
         }
     }
@@ -324,6 +325,22 @@ void Application::run()
                            static_cast<float>(_artwork.width()),
                            static_cast<float>(_artwork.height()));
 
+        // Live preview: deform the ink under the cursor without recording, so
+        // the batch below picks up the in-progress gesture this same frame.
+        Point dragStart(static_cast<float>(_startX), static_cast<float>(_startY));
+        Point dragEnd = dragStart;
+        if (_isDragging)
+        {
+            double currentMouseX, currentMouseY;
+            glfwGetCursorPos(_window, &currentMouseX, &currentMouseY);
+            dragEnd = windowToCanvas(currentMouseX, currentMouseY);
+
+            if (_toolMode == ToolMode::Tine)
+                _artwork.previewTine(dragStart, dragEnd, _tineSettings);
+            else if (_toolMode == ToolMode::Comb)
+                _artwork.previewComb(dragStart, dragEnd, _combSettings);
+        }
+
         // Re-tessellate and re-upload only when the ink geometry changed.
         if (_artwork.isDirty())
         {
@@ -334,11 +351,6 @@ void Application::run()
 
         if (_isDragging)
         {
-            double currentMouseX, currentMouseY;
-            glfwGetCursorPos(_window, &currentMouseX, &currentMouseY);
-            Point dragStart(static_cast<float>(_startX), static_cast<float>(_startY));
-            Point dragEnd = windowToCanvas(currentMouseX, currentMouseY);
-
             if (_toolMode == ToolMode::Tine)
             {
                 // Draw a single drag line for the tine

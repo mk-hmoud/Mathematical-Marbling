@@ -1,7 +1,8 @@
 #include "Artwork.h"
 
 Artwork::Artwork(int width, int height)
-    : _width(width), _height(height), _rng(std::random_device{}()), _canvas(width, height)
+    : _width(width), _height(height), _rng(std::random_device{}()),
+      _canvas(width, height), _previewCanvas(width, height)
 {
 }
 
@@ -58,12 +59,47 @@ void Artwork::record(const Operation &op)
     _redo.clear();
     apply(op); // incremental: the canvas already reflects _ops
     _ops.push_back(op);
+    _dirty = true;
+}
+
+void Artwork::previewTine(const Point &start, const Point &end, const TineSettings &settings)
+{
+    _previewCanvas = _canvas; // copy committed state, then apply the gesture
+    _previewCanvas.tine(start, end, settings);
+    _previewActive = true;
+    _dirty = true;
+}
+
+void Artwork::previewComb(const Point &start, const Point &end, const CombSettings &settings)
+{
+    _previewCanvas = _canvas;
+    _previewCanvas.comb(start, end, settings);
+    _previewActive = true;
+    _dirty = true;
+}
+
+void Artwork::previewVortex(const Point &pos, const VortexSettings &settings)
+{
+    _previewCanvas = _canvas;
+    _previewCanvas.vortex(pos, settings);
+    _previewActive = true;
+    _dirty = true;
+}
+
+void Artwork::endPreview()
+{
+    if (_previewActive)
+    {
+        _previewActive = false;
+        _dirty = true;
+    }
 }
 
 void Artwork::setOperations(const std::vector<Operation> &ops)
 {
     _ops = ops;
     _redo.clear();
+    _previewActive = false;
     rebuild();
 }
 
@@ -84,6 +120,7 @@ void Artwork::undo()
     _redo.push_back(_ops.back());
     _ops.pop_back();
     rebuild();
+    _dirty = true;
 }
 
 void Artwork::redo()
@@ -95,6 +132,7 @@ void Artwork::redo()
     _redo.pop_back();
     apply(op); // incremental: the canvas already reflects _ops
     _ops.push_back(op);
+    _dirty = true;
 }
 
 void Artwork::rebuild()
@@ -102,6 +140,7 @@ void Artwork::rebuild()
     _canvas.clear();
     for (const auto &op : _ops)
         apply(op);
+    _dirty = true;
 }
 
 void Artwork::apply(const Operation &op)

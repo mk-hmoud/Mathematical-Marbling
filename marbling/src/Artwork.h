@@ -60,15 +60,28 @@ public:
     /** @brief Re-applies the most recently undone operation. */
     void redo();
 
+    // --- Live gesture preview ---
+    // Shows the result of an in-progress operation without recording it, so a
+    // tine/comb/vortex deforms the ink under the cursor in real time. The
+    // gesture is committed by calling the matching add*() on release, then
+    // endPreview() to drop the transient state.
+    void previewTine(const Point &start, const Point &end, const TineSettings &settings);
+    void previewComb(const Point &start, const Point &end, const CombSettings &settings);
+    void previewVortex(const Point &pos, const VortexSettings &settings);
+    void endPreview();
+
     // --- Accessors ---
     const std::vector<Operation> &operations() const { return _ops; }
     int width() const { return _width; }
     int height() const { return _height; }
 
-    // --- Rendering data (delegated to the canvas) ---
-    std::vector<Polygon> getPolygons() const { return _canvas.getPolygons(); }
-    bool isDirty() const { return _canvas.isDirty(); }
-    void clearDirty() { _canvas.clearDirty(); }
+    // --- Rendering data ---
+    std::vector<Polygon> getPolygons() const
+    {
+        return _previewActive ? _previewCanvas.getPolygons() : _canvas.getPolygons();
+    }
+    bool isDirty() const { return _dirty; }
+    void clearDirty() { _dirty = false; }
 
 private:
     void record(const Operation &op); // clear redo, apply, append to history
@@ -77,9 +90,12 @@ private:
 
     int _width, _height;
     std::mt19937 _rng;
-    Canvas _canvas;
+    Canvas _canvas;         // committed geometry
+    Canvas _previewCanvas;  // committed geometry + the in-progress gesture
     std::vector<Operation> _ops;  // active history (oldest first)
     std::vector<Operation> _redo; // undone ops (most recent at back)
+    bool _previewActive = false;
+    bool _dirty = true;     // geometry changed since the last clearDirty()
 };
 
 #endif // ARTWORK_H
