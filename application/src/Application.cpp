@@ -550,7 +550,10 @@ void Application::exportTimelapse()
 
 void Application::saveProject()
 {
-    if (MarbleIO::save(_projectPath, _artwork.width(), _artwork.height(), _artwork.operations()))
+    const std::vector<Color> recolor =
+        _artwork.isRecolorActive() ? _artwork.recolorPalette() : std::vector<Color>{};
+    if (MarbleIO::save(_projectPath, _artwork.width(), _artwork.height(),
+                       _artwork.operations(), recolor))
         _projectStatus = std::string("Saved ") + _projectPath + " (" +
                          std::to_string(_artwork.operations().size()) + " ops)";
     else
@@ -563,9 +566,12 @@ void Application::loadProject()
 {
     int width = 0, height = 0;
     std::vector<Operation> ops;
-    if (MarbleIO::load(_projectPath, width, height, ops))
+    std::vector<Color> recolor;
+    if (MarbleIO::load(_projectPath, width, height, ops, recolor))
     {
         _artwork.load(width, height, ops);
+        if (!recolor.empty())
+            _artwork.setRecolor(recolor);
         _projectStatus = std::string("Loaded ") + _projectPath + " (" +
                          std::to_string(ops.size()) + " ops)";
     }

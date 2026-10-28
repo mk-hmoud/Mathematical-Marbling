@@ -13,7 +13,9 @@ namespace
     constexpr int FLOAT_DIGITS = std::numeric_limits<float>::max_digits10;
 }
 
-bool MarbleIO::save(const std::string &path, int width, int height, const std::vector<Operation> &ops)
+bool MarbleIO::save(const std::string &path, int width, int height,
+                    const std::vector<Operation> &ops,
+                    const std::vector<Color> &recolorPalette)
 {
     std::ofstream out(path);
     if (!out)
@@ -22,6 +24,14 @@ bool MarbleIO::save(const std::string &path, int width, int height, const std::v
     out.precision(FLOAT_DIGITS);
     out << "MARBLE " << FORMAT_VERSION << "\n";
     out << "canvas " << width << " " << height << "\n";
+
+    if (!recolorPalette.empty())
+    {
+        out << "recolor " << recolorPalette.size();
+        for (const Color &c : recolorPalette)
+            out << ' ' << c.r << ' ' << c.g << ' ' << c.b;
+        out << "\n";
+    }
 
     for (const auto &op : ops)
     {
@@ -54,8 +64,10 @@ bool MarbleIO::save(const std::string &path, int width, int height, const std::v
     return static_cast<bool>(out);
 }
 
-bool MarbleIO::load(const std::string &path, int &width, int &height, std::vector<Operation> &ops)
+bool MarbleIO::load(const std::string &path, int &width, int &height,
+                    std::vector<Operation> &ops, std::vector<Color> &recolorPalette)
 {
+    recolorPalette.clear();
     std::ifstream in(path);
     if (!in)
         return false;
@@ -88,6 +100,20 @@ bool MarbleIO::load(const std::string &path, int &width, int &height, std::vecto
             if (!(ss >> width >> height))
                 return false;
             haveCanvas = true;
+        }
+        else if (tag == "recolor")
+        {
+            size_t count = 0;
+            if (!(ss >> count))
+                return false;
+            recolorPalette.clear();
+            for (size_t i = 0; i < count; ++i)
+            {
+                Color c;
+                if (!(ss >> c.r >> c.g >> c.b))
+                    return false;
+                recolorPalette.push_back(c);
+            }
         }
         else if (tag == "drop")
         {

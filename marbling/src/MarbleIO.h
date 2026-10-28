@@ -18,14 +18,20 @@
  */
 namespace MarbleIO
 {
-    /** @brief Writes the canvas size and operation list to @p path. */
-    bool save(const std::string &path, int width, int height, const std::vector<Operation> &ops);
+    /**
+     * @brief Writes the canvas size, operation list, and (if non-empty) the
+     * active recolor palette to @p path.
+     */
+    bool save(const std::string &path, int width, int height,
+              const std::vector<Operation> &ops,
+              const std::vector<Color> &recolorPalette = {});
 
     /**
-     * @brief Reads a .marble file into @p width, @p height and @p ops.
-     * @return true on success; on failure the out-params are left unspecified.
+     * @brief Reads a .marble file into @p width, @p height, @p ops and (if
+     * present) @p recolorPalette. @return true on success.
      */
-    bool load(const std::string &path, int &width, int &height, std::vector<Operation> &ops);
+    bool load(const std::string &path, int &width, int &height,
+              std::vector<Operation> &ops, std::vector<Color> &recolorPalette);
 }
 
 #endif // MARBLE_IO_H
