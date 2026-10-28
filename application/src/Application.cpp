@@ -8,6 +8,15 @@
 #include "PngWriter.h"
 #include "SvgWriter.h"
 #include "MarbleIO.h"
+#include "FileDialog.h"
+
+namespace
+{
+    void copyToBuffer(char *buf, size_t n, const std::string &s)
+    {
+        std::snprintf(buf, n, "%s", s.c_str());
+    }
+}
 
 Application::Application(int width, int height, const char *title)
     : _window(nullptr), _artwork(width, height), _isDragging(false), _startX(0), _startY(0)
@@ -488,6 +497,54 @@ void Application::exportSvg()
     std::cout << _exportStatus << std::endl;
 }
 
+void Application::promptSaveProject()
+{
+    if (FileDialog::available())
+    {
+        const std::string p = FileDialog::save("Save Marbling Project", _projectPath);
+        if (p.empty())
+            return; // cancelled
+        copyToBuffer(_projectPath, sizeof(_projectPath), p);
+    }
+    saveProject();
+}
+
+void Application::promptLoadProject()
+{
+    if (FileDialog::available())
+    {
+        const std::string p = FileDialog::open("Open Marbling Project");
+        if (p.empty())
+            return;
+        copyToBuffer(_projectPath, sizeof(_projectPath), p);
+    }
+    loadProject();
+}
+
+void Application::promptExportPng()
+{
+    if (FileDialog::available())
+    {
+        const std::string p = FileDialog::save("Export PNG", _exportPath);
+        if (p.empty())
+            return;
+        copyToBuffer(_exportPath, sizeof(_exportPath), p);
+    }
+    exportPng();
+}
+
+void Application::promptExportSvg()
+{
+    if (FileDialog::available())
+    {
+        const std::string p = FileDialog::save("Export SVG", _svgPath);
+        if (p.empty())
+            return;
+        copyToBuffer(_svgPath, sizeof(_svgPath), p);
+    }
+    exportSvg();
+}
+
 void Application::exportTimelapse()
 {
     const std::vector<Operation> &ops = _artwork.operations();
@@ -709,12 +766,14 @@ void Application::run()
             if (ImGui::BeginMenu("File"))
             {
                 if (ImGui::MenuItem("Save"))
-                    saveProject();
+                    promptSaveProject();
                 if (ImGui::MenuItem("Load"))
-                    loadProject();
+                    promptLoadProject();
                 ImGui::Separator();
                 if (ImGui::MenuItem("Export PNG"))
-                    exportPng();
+                    promptExportPng();
+                if (ImGui::MenuItem("Export SVG"))
+                    promptExportSvg();
                 ImGui::EndMenu();
             }
             if (ImGui::BeginMenu("Edit"))
@@ -943,10 +1002,10 @@ void Application::run()
             {
                 ImGui::InputText("Path", _projectPath, sizeof(_projectPath));
                 if (ImGui::Button("Save"))
-                    saveProject();
+                    promptSaveProject();
                 ImGui::SameLine();
                 if (ImGui::Button("Load"))
-                    loadProject();
+                    promptLoadProject();
                 if (!_projectStatus.empty())
                     ImGui::TextWrapped("%s", _projectStatus.c_str());
             }
@@ -978,16 +1037,26 @@ void Application::run()
                             static_cast<int>(_artwork.width() * _exportScale),
                             static_cast<int>(_artwork.height() * _exportScale));
                 if (ImGui::Button("Export PNG"))
-                    exportPng();
+                    promptExportPng();
 
                 ImGui::Separator();
                 ImGui::InputText("SVG File", _svgPath, sizeof(_svgPath));
                 if (ImGui::Button("Export SVG (vector)"))
-                    exportSvg();
+                    promptExportSvg();
                 ImGui::TextDisabled("SVG ignores symmetry");
 
                 ImGui::Separator();
                 ImGui::InputText("Timelapse Dir", _timelapseDir, sizeof(_timelapseDir));
+                if (FileDialog::available())
+                {
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton("Browse##tl"))
+                    {
+                        const std::string d = FileDialog::folder("Timelapse Output Folder");
+                        if (!d.empty())
+                            copyToBuffer(_timelapseDir, sizeof(_timelapseDir), d);
+                    }
+                }
                 ImGui::SliderInt("Frames", &_timelapseFrames, 10, 300);
                 if (ImGui::Button("Export Timelapse (PNG frames)"))
                     exportTimelapse();

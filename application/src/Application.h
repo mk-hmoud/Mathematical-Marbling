@@ -49,6 +49,12 @@ private:
     void saveProject();
     void loadProject();
 
+    // Prompt via a native dialog (falling back to the typed path), then act.
+    void promptSaveProject();
+    void promptLoadProject();
+    void promptExportPng();
+    void promptExportSvg();
+
     // Authentic marbling patterns (full-canvas gestures, one undo step each).
     void applyStone();
     void applyNonpareil();
