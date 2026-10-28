@@ -14,6 +14,7 @@
 #include "Artwork.h"
 #include "Renderer.h"
 #include "Palette.h"
+#include "Theme.h"
 
 class Renderer;
 
@@ -25,6 +26,16 @@ public:
     void run();
 
 private:
+    enum class ToolMode
+    {
+        Drop,
+        Tine,
+        Comb,
+        Vortex,
+        Wave,
+        Eyedropper
+    };
+
     void handleMouseInput(int button, int action, int mods);
     void handleKeyInput(int key, int scancode, int action, int mods);
     void handleScroll(double xoffset, double yoffset);
@@ -42,6 +53,14 @@ private:
     };
     CanvasView canvasView(int fbWidth, int fbHeight) const;
     Point windowToCanvas(double windowX, double windowY) const;
+
+    // UI (ImGui) — a docked "studio" layout built once per fresh session.
+    void buildDefaultDockLayout(unsigned int dockspaceId);
+    void drawMenuBar();
+    void drawToolsPanel();      // left rail: tool selection + quick actions
+    void drawPropertiesPanel(); // right: palette, settings, canvas, export
+    void drawStatusBar();       // bottom: tool, zoom, size, FPS
+    bool toolButton(const char *label, const char *shortcut, ToolMode mode);
 
     void exportPng();
     void exportSvg();
@@ -66,6 +85,15 @@ private:
     Artwork _artwork;
     std::unique_ptr<Renderer> _renderer;
 
+    // UI theme / typography
+    Theme::Fonts _fonts;
+    float _dpiScale = 1.0f;
+
+    // Region the canvas renders into (framebuffer px, top-left origin). This is
+    // the dockspace central node, so panels never overlap the artwork. Zero
+    // width means "not set yet" -> fall back to the whole framebuffer.
+    float _regX = 0.0f, _regY = 0.0f, _regW = 0.0f, _regH = 0.0f;
+
     // Input state
     bool _isDragging;
     double _startX, _startY;
@@ -78,15 +106,6 @@ private:
     double _panLastX = 0.0, _panLastY = 0.0;
     GLint _maxViewportDim = 8192; // queried at startup; caps zoom
 
-    enum class ToolMode
-    {
-        Drop,
-        Tine,
-        Comb,
-        Vortex,
-        Wave,
-        Eyedropper
-    };
     ToolMode _toolMode = ToolMode::Drop;
 
     VortexSettings _vortexSettings;

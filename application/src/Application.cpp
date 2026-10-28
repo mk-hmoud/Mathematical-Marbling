@@ -3,6 +3,9 @@
 #include <memory>
 #include <algorithm>
 #include <filesystem>
+#include <cfloat>
+
+#include "imgui_internal.h" // DockBuilder*, DockNode, BeginViewportSideBar
 
 #include "Renderer.h"
 #include "PngWriter.h"
@@ -15,6 +18,20 @@ namespace
     void copyToBuffer(char *buf, size_t n, const std::string &s)
     {
         std::snprintf(buf, n, "%s", s.c_str());
+    }
+
+    // "(?)" tooltip marker for inline help.
+    void helpMarker(const char *desc)
+    {
+        ImGui::SameLine();
+        ImGui::TextDisabled("(?)");
+        if (ImGui::BeginItemTooltip())
+        {
+            ImGui::PushTextWrapPos(ImGui::GetFontSize() * 22.0f);
+            ImGui::TextUnformatted(desc);
+            ImGui::PopTextWrapPos();
+            ImGui::EndTooltip();
+        }
     }
 }
 
@@ -87,9 +104,17 @@ Application::Application(int width, int height, const char *title)
     (void)io;
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
-    io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
+    // Viewports (tear-off OS windows) are intentionally left off: a single
+    // cohesive window reads more like a finished tool and sidesteps Wayland's
+    // inability to position child windows.
 
-    ImGui::StyleColorsDark();
+    // HiDPI: bake fonts larger and scale metrics so the UI stays crisp.
+    float sx = 1.0f, sy = 1.0f;
+    glfwGetWindowContentScale(_window, &sx, &sy);
+    _dpiScale = std::max({sx, sy, 1.0f});
+
+    _fonts = Theme::LoadFonts(io, _dpiScale);
+    Theme::Apply(_dpiScale);
 
     // Setup Platform/Renderer backends
     ImGui_ImplGlfw_InitForOpenGL(_window, true);
@@ -116,17 +141,25 @@ Application::CanvasView Application::canvasView(int fbWidth, int fbHeight) const
     const float cw = static_cast<float>(_artwork.width());
     const float ch = static_cast<float>(_artwork.height());
 
-    // Fit the canvas inside the window, preserving aspect (letterbox), then
+    // Canvas lives inside the dockspace central node (region). Fall back to the
+    // whole framebuffer until the region has been measured.
+    const bool haveRegion = _regW > 1.0f && _regH > 1.0f;
+    const float rx = haveRegion ? _regX : 0.0f;
+    const float ry = haveRegion ? _regY : 0.0f;
+    const float rw = haveRegion ? _regW : static_cast<float>(fbWidth);
+    const float rh = haveRegion ? _regH : static_cast<float>(fbHeight);
+
+    // Fit the canvas inside the region, preserving aspect (letterbox), then
     // apply the current zoom and pan.
-    float fit = std::min(fbWidth / cw, fbHeight / ch);
+    float fit = std::min(rw / cw, rh / ch);
     if (fit <= 0.0f)
         fit = 1.0f;
     const float scale = fit * _zoom;
 
     const float drawW = cw * scale;
     const float drawH = ch * scale;
-    const float offX = (fbWidth - drawW) * 0.5f + _panX;
-    const float offY = (fbHeight - drawH) * 0.5f + _panY; // from the top
+    const float offX = rx + (rw - drawW) * 0.5f + _panX;        // from the left
+    const float offY = ry + (rh - drawH) * 0.5f + _panY;        // from the top
 
     CanvasView v;
     v.scale = scale;
@@ -176,7 +209,12 @@ void Application::handleScroll(double xoffset, double yoffset)
     // Clamp zoom to a sane range and to what keeps the viewport within limits.
     const float cw = static_cast<float>(_artwork.width());
     const float ch = static_cast<float>(_artwork.height());
-    const float fit = std::min(fbW / cw, fbH / ch);
+    const bool haveRegion = _regW > 1.0f && _regH > 1.0f;
+    const float rx = haveRegion ? _regX : 0.0f;
+    const float ry = haveRegion ? _regY : 0.0f;
+    const float rw = haveRegion ? _regW : static_cast<float>(fbW);
+    const float rh = haveRegion ? _regH : static_cast<float>(fbH);
+    const float fit = std::min(rw / cw, rh / ch);
     const float zoomCap = std::min(_maxViewportDim / (cw * fit), _maxViewportDim / (ch * fit));
 
     const float factor = (yoffset > 0.0) ? 1.1f : 1.0f / 1.1f;
@@ -191,8 +229,8 @@ void Application::handleScroll(double xoffset, double yoffset)
     const float scale = fit * _zoom;
     const float drawW = cw * scale;
     const float drawH = ch * scale;
-    _panX = static_cast<float>(fx) - anchor.x * scale - (fbW - drawW) * 0.5f;
-    _panY = static_cast<float>(fy) - anchor.y * scale - (fbH - drawH) * 0.5f;
+    _panX = static_cast<float>(fx) - anchor.x * scale - (rx + (rw - drawW) * 0.5f);
+    _panY = static_cast<float>(fy) - anchor.y * scale - (ry + (rh - drawH) * 0.5f);
 }
 
 void Application::resetView()
@@ -654,6 +692,57 @@ void Application::run()
         int width, height;
         glfwGetFramebufferSize(_window, &width, &height);
 
+        // --- UI (built before the canvas so it can target the central node) ---
+        // Menu bar and status bar first: they reserve work-area space that the
+        // dock host below reads when sizing the central (canvas) node.
+        drawMenuBar();
+        drawStatusBar();
+
+        // Full-viewport dock host with a transparent (passthru) central node:
+        // the GL canvas shows through the hole, panels dock around the sides.
+        ImGuiViewport *vp = ImGui::GetMainViewport();
+        ImGui::SetNextWindowPos(vp->WorkPos);
+        ImGui::SetNextWindowSize(vp->WorkSize);
+        ImGui::SetNextWindowViewport(vp->ID);
+        const ImGuiWindowFlags hostFlags =
+            ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse |
+            ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
+            ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus |
+            ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoBackground;
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+        ImGui::Begin("##DockHost", nullptr, hostFlags);
+        ImGui::PopStyleVar(3);
+
+        const ImGuiID dockId = ImGui::GetID("MarblingDockSpace");
+        static bool dockInitialized = false;
+        if (!dockInitialized)
+        {
+            dockInitialized = true;
+            // Only impose our layout when there is no saved one (imgui.ini).
+            if (ImGui::DockBuilderGetNode(dockId) == nullptr)
+                buildDefaultDockLayout(dockId);
+        }
+        ImGui::DockSpace(dockId, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_PassthruCentralNode);
+        ImGui::End();
+
+        // Measure the central node -> canvas region (framebuffer px, top-left).
+        if (ImGuiDockNode *central = ImGui::DockBuilderGetCentralNode(dockId))
+        {
+            int winW = 0, winH = 0;
+            glfwGetWindowSize(_window, &winW, &winH);
+            const float sx = winW > 0 ? static_cast<float>(width) / winW : 1.0f;
+            const float sy = winH > 0 ? static_cast<float>(height) / winH : 1.0f;
+            _regX = (central->Pos.x - vp->Pos.x) * sx;
+            _regY = (central->Pos.y - vp->Pos.y) * sy;
+            _regW = central->Size.x * sx;
+            _regH = central->Size.y * sy;
+        }
+
+        drawToolsPanel();
+        drawPropertiesPanel();
+
         // Apply any middle-button pan (delta in framebuffer px).
         if (_isPanning)
         {
@@ -760,320 +849,6 @@ void Application::run()
         // Done with the canvas rectangle; let ImGui draw over the full window.
         glDisable(GL_SCISSOR_TEST);
 
-        // --- MENU BAR ---
-        if (ImGui::BeginMainMenuBar())
-        {
-            if (ImGui::BeginMenu("File"))
-            {
-                if (ImGui::MenuItem("Save"))
-                    promptSaveProject();
-                if (ImGui::MenuItem("Load"))
-                    promptLoadProject();
-                ImGui::Separator();
-                if (ImGui::MenuItem("Export PNG"))
-                    promptExportPng();
-                if (ImGui::MenuItem("Export SVG"))
-                    promptExportSvg();
-                ImGui::EndMenu();
-            }
-            if (ImGui::BeginMenu("Edit"))
-            {
-                if (ImGui::MenuItem("Undo", "Ctrl+Z", false, _artwork.canUndo()))
-                    _artwork.undo();
-                if (ImGui::MenuItem("Redo", "Ctrl+Shift+Z", false, _artwork.canRedo()))
-                    _artwork.redo();
-                ImGui::EndMenu();
-            }
-            if (ImGui::BeginMenu("View"))
-            {
-                if (ImGui::MenuItem("Reset View", "0"))
-                    resetView();
-                ImGui::Separator();
-                if (ImGui::MenuItem("Symmetry: None", nullptr, _symmetry == Symmetry::None))
-                    _symmetry = Symmetry::None;
-                if (ImGui::MenuItem("Symmetry: Mirror X", nullptr, _symmetry == Symmetry::MirrorX))
-                    _symmetry = Symmetry::MirrorX;
-                if (ImGui::MenuItem("Symmetry: Mirror Y", nullptr, _symmetry == Symmetry::MirrorY))
-                    _symmetry = Symmetry::MirrorY;
-                if (ImGui::MenuItem("Symmetry: Quad", nullptr, _symmetry == Symmetry::Quad))
-                    _symmetry = Symmetry::Quad;
-                if (ImGui::MenuItem("Symmetry: Radial", nullptr, _symmetry == Symmetry::Radial))
-                    _symmetry = Symmetry::Radial;
-                ImGui::SliderInt("Radial folds", &_symmetryFold, 2, 16);
-                ImGui::EndMenu();
-            }
-            if (ImGui::BeginMenu("Tools"))
-            {
-                if (ImGui::MenuItem("Drop", "D", _toolMode == ToolMode::Drop))
-                    _toolMode = ToolMode::Drop;
-                if (ImGui::MenuItem("Tine", "T", _toolMode == ToolMode::Tine))
-                    _toolMode = ToolMode::Tine;
-                if (ImGui::MenuItem("Comb", "C", _toolMode == ToolMode::Comb))
-                    _toolMode = ToolMode::Comb;
-                if (ImGui::MenuItem("Vortex", "V", _toolMode == ToolMode::Vortex))
-                    _toolMode = ToolMode::Vortex;
-                if (ImGui::MenuItem("Wave", "W", _toolMode == ToolMode::Wave))
-                    _toolMode = ToolMode::Wave;
-                if (ImGui::MenuItem("Eyedropper", "E", _toolMode == ToolMode::Eyedropper))
-                    _toolMode = ToolMode::Eyedropper;
-                ImGui::EndMenu();
-            }
-            if (ImGui::BeginMenu("Actions"))
-            {
-                if (ImGui::MenuItem("Add Random Ink Drop"))
-                    addRandomDrop();
-                ImGui::Separator();
-                if (ImGui::MenuItem("Clear Canvas", "Backspace"))
-                    _artwork.clear();
-                ImGui::EndMenu();
-            }
-            if (ImGui::BeginMenu("Patterns"))
-            {
-                if (ImGui::MenuItem("Stone (scatter)"))
-                    applyStone();
-                if (ImGui::MenuItem("Nonpareil"))
-                    applyNonpareil();
-                if (ImGui::MenuItem("Gel-git"))
-                    applyGelGit();
-                if (ImGui::MenuItem("Chevron"))
-                    applyChevron();
-                ImGui::EndMenu();
-            }
-            ImGui::EndMainMenuBar();
-        }
-
-        // --- GUI DRAWING ---
-        {
-            ImGui::Begin("Marbling Controls");
-
-            const char *toolNames[] = {"Drop", "Tine", "Comb", "Vortex", "Wave", "Eyedropper"};
-            ImGui::Text("Active Tool: %s", toolNames[static_cast<int>(_toolMode)]);
-            ImGui::Separator();
-
-            if (ImGui::CollapsingHeader("Palette", ImGuiTreeNodeFlags_DefaultOpen))
-            {
-                if (!_palettes.empty())
-                {
-                    if (ImGui::BeginCombo("Set", _palettes[_activePalette].name.c_str()))
-                    {
-                        for (int i = 0; i < static_cast<int>(_palettes.size()); ++i)
-                        {
-                            const bool selected = (i == _activePalette);
-                            if (ImGui::Selectable(_palettes[i].name.c_str(), selected))
-                                _activePalette = i;
-                            if (selected)
-                                ImGui::SetItemDefaultFocus();
-                        }
-                        ImGui::EndCombo();
-                    }
-
-                    // Clickable swatches that set the active drop color. They
-                    // wrap to the window width.
-                    const std::vector<Color> &colors = _palettes[_activePalette].colors;
-                    const float swatch = 28.0f;
-                    const float visibleX = ImGui::GetWindowPos().x + ImGui::GetWindowContentRegionMax().x;
-                    const ImGuiStyle &style = ImGui::GetStyle();
-                    for (int i = 0; i < static_cast<int>(colors.size()); ++i)
-                    {
-                        ImGui::PushID(i);
-                        const ImVec4 col(colors[i].r, colors[i].g, colors[i].b, 1.0f);
-                        if (ImGui::ColorButton("##swatch", col, ImGuiColorEditFlags_NoTooltip,
-                                               ImVec2(swatch, swatch)))
-                        {
-                            _nextDropColor = colors[i];
-                        }
-                        ImGui::PopID();
-
-                        const float nextX = ImGui::GetItemRectMax().x + style.ItemSpacing.x + swatch;
-                        if (i + 1 < static_cast<int>(colors.size()) && nextX < visibleX)
-                            ImGui::SameLine();
-                    }
-                }
-
-                ImGui::ColorEdit3("Drop Color", (float *)&_nextDropColor);
-                ImGui::Checkbox("Random drops use palette", &_randomUsesPalette);
-
-                ImGui::Separator();
-                ImGui::Checkbox("Concentric rings", &_concentricDrop);
-                if (_concentricDrop)
-                    ImGui::SliderInt("Rings", &_ringCount, 2, 10);
-
-                ImGui::Separator();
-                // Nondestructive recolor: re-skin the whole piece to this palette.
-                if (!_palettes.empty() && ImGui::Button("Recolor to this palette"))
-                    _artwork.setRecolor(_palettes[_activePalette].colors);
-                ImGui::SameLine();
-                if (ImGui::Button("Restore colors"))
-                    _artwork.clearRecolor();
-                if (_artwork.isRecolorActive())
-                    ImGui::TextDisabled("Recolor active (original colors preserved)");
-            }
-
-            if (ImGui::CollapsingHeader("Drop Settings"))
-            {
-                ImGui::SliderFloat("Drop Radius", &_dropRadius, 10.0f, 150.0f);
-                ImGui::ColorEdit3("Drop Color##settings", (float *)&_nextDropColor);
-            }
-
-            if (ImGui::CollapsingHeader("Tine Settings"))
-            {
-                ImGui::SliderFloat("Tine Strength (z)", &_tineSettings.z, 10.0f, 200.0f);
-                ImGui::SliderFloat("Tine Falloff (c)", &_tineSettings.c, 1.0f, 50.0f);
-            }
-
-            if (ImGui::CollapsingHeader("Comb Settings (New!)"))
-            {
-                ImGui::SliderInt("Num Tines", &_combSettings.numTines, 2, 50);
-                ImGui::SliderFloat("Tine Spacing", &_combSettings.spacing, 5.0f, 100.0f);
-                ImGui::Separator();
-                ImGui::SliderFloat("Comb Strength (z)", &_combSettings.properties.z, 10.0f, 200.0f);
-                ImGui::SliderFloat("Comb Falloff (c)", &_combSettings.properties.c, 1.0f, 50.0f);
-            }
-
-            if (ImGui::CollapsingHeader("Vortex Settings"))
-            {
-                ImGui::SliderFloat("Vortex Strength (z)", &_vortexSettings.z, 50.0f, 500.0f);
-                ImGui::SliderFloat("Vortex C-Value (c)", &_vortexSettings.c, 10.0f, 100.0f);
-                ImGui::SliderFloat("Vortex Radius (r)", &_vortexSettings.r, 10.0f, 100.0f);
-            }
-
-            if (ImGui::CollapsingHeader("Wave Settings"))
-            {
-                ImGui::SliderFloat("Wave Amplitude", &_waveSettings.amplitude, 2.0f, 120.0f);
-                ImGui::SliderFloat("Wavelength", &_waveSettings.wavelength, 20.0f, 400.0f);
-            }
-
-            if (ImGui::CollapsingHeader("Patterns", ImGuiTreeNodeFlags_DefaultOpen))
-            {
-                ImGui::SliderFloat("Comb Spacing", &_patternSpacing, 10.0f, 120.0f);
-                ImGui::SliderInt("Stone Drops", &_stoneDrops, 5, 200);
-                if (ImGui::Button("Stone"))
-                    applyStone();
-                ImGui::SameLine();
-                if (ImGui::Button("Nonpareil"))
-                    applyNonpareil();
-                if (ImGui::Button("Gel-git"))
-                    applyGelGit();
-                ImGui::SameLine();
-                if (ImGui::Button("Chevron"))
-                    applyChevron();
-            }
-
-            if (ImGui::CollapsingHeader("Canvas", ImGuiTreeNodeFlags_DefaultOpen))
-            {
-                ImGui::ColorEdit3("Background Color", (float *)&_backgroundColor);
-                ImGui::Text("Current: %d x %d", _artwork.width(), _artwork.height());
-                ImGui::Text("Zoom: %.0f%%  (scroll to zoom, middle-drag to pan)", _zoom * 100.0f);
-                ImGui::SameLine();
-                if (ImGui::SmallButton("Reset View"))
-                    resetView();
-
-                ImGui::InputInt2("Size", _canvasSize);
-
-                // Aspect-ratio presets (long edge ~1200).
-                struct Preset { const char *label; int w, h; };
-                static const Preset presets[] = {
-                    {"1:1", 1000, 1000}, {"4:3", 1200, 900}, {"3:2", 1200, 800},
-                    {"16:9", 1280, 720}, {"3:4", 900, 1200}};
-                for (int i = 0; i < 5; ++i)
-                {
-                    if (i > 0)
-                        ImGui::SameLine();
-                    if (ImGui::SmallButton(presets[i].label))
-                    {
-                        _canvasSize[0] = presets[i].w;
-                        _canvasSize[1] = presets[i].h;
-                    }
-                }
-
-                if (ImGui::Button("New Canvas"))
-                {
-                    const int w = std::clamp(_canvasSize[0], 16, 8192);
-                    const int h = std::clamp(_canvasSize[1], 16, 8192);
-                    _canvasSize[0] = w;
-                    _canvasSize[1] = h;
-                    _artwork.load(w, h, {}); // fresh canvas at the chosen size
-                }
-                ImGui::SameLine();
-                ImGui::TextDisabled("(clears the current piece)");
-            }
-
-            if (ImGui::CollapsingHeader("Project", ImGuiTreeNodeFlags_DefaultOpen))
-            {
-                ImGui::InputText("Path", _projectPath, sizeof(_projectPath));
-                if (ImGui::Button("Save"))
-                    promptSaveProject();
-                ImGui::SameLine();
-                if (ImGui::Button("Load"))
-                    promptLoadProject();
-                if (!_projectStatus.empty())
-                    ImGui::TextWrapped("%s", _projectStatus.c_str());
-            }
-
-            if (ImGui::CollapsingHeader("Export", ImGuiTreeNodeFlags_DefaultOpen))
-            {
-                ImGui::InputText("PNG File", _exportPath, sizeof(_exportPath));
-                ImGui::SliderFloat("Scale", &_exportScale, 0.5f, 8.0f, "%.1fx");
-
-                // Quick scale presets.
-                if (ImGui::SmallButton("1x"))
-                    _exportScale = 1.0f;
-                ImGui::SameLine();
-                if (ImGui::SmallButton("2x"))
-                    _exportScale = 2.0f;
-                ImGui::SameLine();
-                if (ImGui::SmallButton("4x"))
-                    _exportScale = 4.0f;
-                ImGui::SameLine();
-                if (ImGui::SmallButton("Print (300dpi A4)"))
-                {
-                    // Scale so the long edge reaches ~3508 px (A4 @ 300dpi).
-                    const int longEdge = std::max(_artwork.width(), _artwork.height());
-                    _exportScale = 3508.0f / static_cast<float>(longEdge);
-                }
-
-                ImGui::Checkbox("Transparent background", &_exportTransparent);
-                ImGui::Text("Output: %d x %d px",
-                            static_cast<int>(_artwork.width() * _exportScale),
-                            static_cast<int>(_artwork.height() * _exportScale));
-                if (ImGui::Button("Export PNG"))
-                    promptExportPng();
-
-                ImGui::Separator();
-                ImGui::InputText("SVG File", _svgPath, sizeof(_svgPath));
-                if (ImGui::Button("Export SVG (vector)"))
-                    promptExportSvg();
-                ImGui::TextDisabled("SVG ignores symmetry");
-
-                ImGui::Separator();
-                ImGui::InputText("Timelapse Dir", _timelapseDir, sizeof(_timelapseDir));
-                if (FileDialog::available())
-                {
-                    ImGui::SameLine();
-                    if (ImGui::SmallButton("Browse##tl"))
-                    {
-                        const std::string d = FileDialog::folder("Timelapse Output Folder");
-                        if (!d.empty())
-                            copyToBuffer(_timelapseDir, sizeof(_timelapseDir), d);
-                    }
-                }
-                ImGui::SliderInt("Frames", &_timelapseFrames, 10, 300);
-                if (ImGui::Button("Export Timelapse (PNG frames)"))
-                    exportTimelapse();
-
-                if (!_exportStatus.empty())
-                    ImGui::TextWrapped("%s", _exportStatus.c_str());
-            }
-
-            ImGui::Separator();
-            if (ImGui::Button("Add Random Ink Drop"))
-            {
-                addRandomDrop();
-            }
-            ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
-            ImGui::End();
-        }
-
         // --- IMGUI RENDER ---
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
@@ -1089,4 +864,460 @@ void Application::run()
 
         glfwSwapBuffers(_window);
     }
+}
+
+// Impose the default docked layout (left tool rail, right properties panel,
+// canvas in the passthrough centre). Only runs when there is no saved layout.
+void Application::buildDefaultDockLayout(unsigned int dockspaceId)
+{
+    ImGui::DockBuilderRemoveNode(dockspaceId);
+    ImGui::DockBuilderAddNode(dockspaceId,
+                              ImGuiDockNodeFlags_PassthruCentralNode | ImGuiDockNodeFlags_DockSpace);
+    ImGui::DockBuilderSetNodeSize(dockspaceId, ImGui::GetMainViewport()->WorkSize);
+
+    ImGuiID center = dockspaceId;
+    const ImGuiID left = ImGui::DockBuilderSplitNode(center, ImGuiDir_Left, 0.17f, nullptr, &center);
+    const ImGuiID right = ImGui::DockBuilderSplitNode(center, ImGuiDir_Right, 0.34f, nullptr, &center);
+
+    ImGui::DockBuilderDockWindow("Tools", left);
+    ImGui::DockBuilderDockWindow("Properties", right);
+    ImGui::DockBuilderFinish(dockspaceId);
+}
+
+// Full-width tool toggle: label on the left, shortcut hint on the right, with
+// the accent fill when it is the active tool.
+bool Application::toolButton(const char *label, const char *shortcut, ToolMode mode)
+{
+    const bool active = (_toolMode == mode);
+    const ImGuiStyle &style = ImGui::GetStyle();
+    const float h = ImGui::GetFontSize() + style.FramePadding.y * 2.0f;
+
+    ImGui::PushStyleVar(ImGuiStyleVar_SelectableTextAlign, ImVec2(0.0f, 0.5f));
+    if (active)
+        ImGui::PushStyleColor(ImGuiCol_Header, ImVec4(Theme::Accent.x, Theme::Accent.y, Theme::Accent.z, 0.50f));
+
+    const bool clicked = ImGui::Selectable(label, active, 0, ImVec2(0.0f, h));
+
+    if (active)
+        ImGui::PopStyleColor();
+    ImGui::PopStyleVar();
+
+    if (shortcut && *shortcut)
+    {
+        const ImVec2 mn = ImGui::GetItemRectMin();
+        const ImVec2 mx = ImGui::GetItemRectMax();
+        const ImVec2 ts = ImGui::CalcTextSize(shortcut);
+        const ImU32 col = ImGui::GetColorU32(active ? ImGuiCol_Text : ImGuiCol_TextDisabled);
+        ImGui::GetWindowDrawList()->AddText(
+            ImVec2(mx.x - ts.x - style.FramePadding.x, mn.y + (h - ts.y) * 0.5f), col, shortcut);
+    }
+
+    if (clicked)
+        _toolMode = mode;
+    return clicked;
+}
+
+void Application::drawMenuBar()
+{
+    if (!ImGui::BeginMainMenuBar())
+        return;
+
+    if (ImGui::BeginMenu("File"))
+    {
+        if (ImGui::MenuItem("Save Project...", "Ctrl+S"))
+            promptSaveProject();
+        if (ImGui::MenuItem("Load Project..."))
+            promptLoadProject();
+        ImGui::Separator();
+        if (ImGui::MenuItem("Export PNG..."))
+            promptExportPng();
+        if (ImGui::MenuItem("Export SVG..."))
+            promptExportSvg();
+        ImGui::EndMenu();
+    }
+    if (ImGui::BeginMenu("Edit"))
+    {
+        if (ImGui::MenuItem("Undo", "Ctrl+Z", false, _artwork.canUndo()))
+            _artwork.undo();
+        if (ImGui::MenuItem("Redo", "Ctrl+Shift+Z", false, _artwork.canRedo()))
+            _artwork.redo();
+        ImGui::Separator();
+        if (ImGui::MenuItem("Clear Canvas", "Backspace"))
+            _artwork.clear();
+        ImGui::EndMenu();
+    }
+    if (ImGui::BeginMenu("View"))
+    {
+        if (ImGui::MenuItem("Reset View", "0"))
+            resetView();
+        ImGui::Separator();
+        if (ImGui::MenuItem("Symmetry: None", nullptr, _symmetry == Symmetry::None))
+            _symmetry = Symmetry::None;
+        if (ImGui::MenuItem("Symmetry: Mirror X", nullptr, _symmetry == Symmetry::MirrorX))
+            _symmetry = Symmetry::MirrorX;
+        if (ImGui::MenuItem("Symmetry: Mirror Y", nullptr, _symmetry == Symmetry::MirrorY))
+            _symmetry = Symmetry::MirrorY;
+        if (ImGui::MenuItem("Symmetry: Quad", nullptr, _symmetry == Symmetry::Quad))
+            _symmetry = Symmetry::Quad;
+        if (ImGui::MenuItem("Symmetry: Radial", nullptr, _symmetry == Symmetry::Radial))
+            _symmetry = Symmetry::Radial;
+        ImGui::SetNextItemWidth(160.0f);
+        ImGui::SliderInt("Radial folds", &_symmetryFold, 2, 16);
+        ImGui::EndMenu();
+    }
+    if (ImGui::BeginMenu("Patterns"))
+    {
+        if (ImGui::MenuItem("Stone (scatter)"))
+            applyStone();
+        if (ImGui::MenuItem("Nonpareil"))
+            applyNonpareil();
+        if (ImGui::MenuItem("Gel-git"))
+            applyGelGit();
+        if (ImGui::MenuItem("Chevron"))
+            applyChevron();
+        ImGui::EndMenu();
+    }
+    ImGui::EndMainMenuBar();
+}
+
+void Application::drawToolsPanel()
+{
+    if (ImGui::Begin("Tools"))
+    {
+        if (_fonts.h1)
+            ImGui::PushFont(_fonts.h1);
+        ImGui::TextUnformatted("Marbling");
+        if (_fonts.h1)
+            ImGui::PopFont();
+        ImGui::TextColored(Theme::TextMuted, "Studio");
+        ImGui::Spacing();
+
+        ImGui::SeparatorText("Tools");
+        toolButton("Drop", "D", ToolMode::Drop);
+        toolButton("Tine", "T", ToolMode::Tine);
+        toolButton("Comb", "C", ToolMode::Comb);
+        toolButton("Vortex", "V", ToolMode::Vortex);
+        toolButton("Wave", "W", ToolMode::Wave);
+        toolButton("Eyedropper", "E", ToolMode::Eyedropper);
+
+        ImGui::Spacing();
+        ImGui::SeparatorText("Edit");
+        const float avail = ImGui::GetContentRegionAvail().x;
+        const float halfW = (avail - ImGui::GetStyle().ItemSpacing.x) * 0.5f;
+
+        ImGui::BeginDisabled(!_artwork.canUndo());
+        if (ImGui::Button("Undo", ImVec2(halfW, 0.0f)))
+            _artwork.undo();
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+        ImGui::BeginDisabled(!_artwork.canRedo());
+        if (ImGui::Button("Redo", ImVec2(-FLT_MIN, 0.0f)))
+            _artwork.redo();
+        ImGui::EndDisabled();
+
+        ImGui::Spacing();
+        ImGui::SeparatorText("Quick actions");
+        if (ImGui::Button("Add Random Drop", ImVec2(-FLT_MIN, 0.0f)))
+            addRandomDrop();
+        if (ImGui::Button("Reset View", ImVec2(-FLT_MIN, 0.0f)))
+            resetView();
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.42f, 0.16f, 0.16f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.55f, 0.20f, 0.20f, 1.0f));
+        if (ImGui::Button("Clear Canvas", ImVec2(-FLT_MIN, 0.0f)))
+            _artwork.clear();
+        ImGui::PopStyleColor(2);
+    }
+    ImGui::End();
+}
+
+void Application::drawPropertiesPanel()
+{
+    if (!ImGui::Begin("Properties"))
+    {
+        ImGui::End();
+        return;
+    }
+
+    // Bold, DefaultOpen collapsing header helper for consistent hierarchy.
+    auto header = [&](const char *label, bool defaultOpen) -> bool
+    {
+        if (_fonts.bold)
+            ImGui::PushFont(_fonts.bold);
+        const bool open = ImGui::CollapsingHeader(
+            label, defaultOpen ? ImGuiTreeNodeFlags_DefaultOpen : 0);
+        if (_fonts.bold)
+            ImGui::PopFont();
+        return open;
+    };
+
+    const char *toolNames[] = {"Drop", "Tine", "Comb", "Vortex", "Wave", "Eyedropper"};
+    const char *toolDesc[] = {
+        "Click to place ink. Hold for concentric rings.",
+        "Drag to draw a single tine stroke.",
+        "Drag to pull a row of evenly spaced tines.",
+        "Click to swirl the ink into a vortex.",
+        "Drag for a rhythmic sine-wave comb.",
+        "Click the canvas to sample a color."};
+    const int tool = static_cast<int>(_toolMode);
+
+    // --- Contextual settings for the active tool ---
+    if (_fonts.h1)
+        ImGui::PushFont(_fonts.h1);
+    ImGui::TextUnformatted(toolNames[tool]);
+    if (_fonts.h1)
+        ImGui::PopFont();
+    ImGui::TextColored(Theme::TextMuted, "%s", toolDesc[tool]);
+    ImGui::Spacing();
+
+    switch (_toolMode)
+    {
+    case ToolMode::Drop:
+        ImGui::SliderFloat("Radius", &_dropRadius, 10.0f, 150.0f, "%.0f px");
+        ImGui::ColorEdit3("Color", (float *)&_nextDropColor);
+        ImGui::Checkbox("Concentric rings", &_concentricDrop);
+        if (_concentricDrop)
+            ImGui::SliderInt("Rings", &_ringCount, 2, 10);
+        break;
+    case ToolMode::Tine:
+        ImGui::SliderFloat("Strength (z)", &_tineSettings.z, 10.0f, 200.0f);
+        ImGui::SliderFloat("Falloff (c)", &_tineSettings.c, 1.0f, 50.0f);
+        break;
+    case ToolMode::Comb:
+        ImGui::SliderInt("Tines", &_combSettings.numTines, 2, 50);
+        ImGui::SliderFloat("Spacing", &_combSettings.spacing, 5.0f, 100.0f, "%.0f px");
+        ImGui::SliderFloat("Strength (z)", &_combSettings.properties.z, 10.0f, 200.0f);
+        ImGui::SliderFloat("Falloff (c)", &_combSettings.properties.c, 1.0f, 50.0f);
+        break;
+    case ToolMode::Vortex:
+        ImGui::SliderFloat("Strength (z)", &_vortexSettings.z, 50.0f, 500.0f);
+        ImGui::SliderFloat("C-Value (c)", &_vortexSettings.c, 10.0f, 100.0f);
+        ImGui::SliderFloat("Radius (r)", &_vortexSettings.r, 10.0f, 100.0f);
+        break;
+    case ToolMode::Wave:
+        ImGui::SliderFloat("Amplitude", &_waveSettings.amplitude, 2.0f, 120.0f, "%.0f px");
+        ImGui::SliderFloat("Wavelength", &_waveSettings.wavelength, 20.0f, 400.0f, "%.0f px");
+        break;
+    case ToolMode::Eyedropper:
+        ImGui::TextDisabled("No settings. Sampled color becomes the drop color.");
+        break;
+    }
+    ImGui::Spacing();
+
+    // --- Palette ---
+    if (header("Palette", true))
+    {
+        if (!_palettes.empty())
+        {
+            if (ImGui::BeginCombo("Set", _palettes[_activePalette].name.c_str()))
+            {
+                for (int i = 0; i < static_cast<int>(_palettes.size()); ++i)
+                {
+                    const bool selected = (i == _activePalette);
+                    if (ImGui::Selectable(_palettes[i].name.c_str(), selected))
+                        _activePalette = i;
+                    if (selected)
+                        ImGui::SetItemDefaultFocus();
+                }
+                ImGui::EndCombo();
+            }
+
+            // Clickable swatches that set the active drop color; they wrap to
+            // the panel width.
+            const std::vector<Color> &colors = _palettes[_activePalette].colors;
+            const float swatch = 26.0f;
+            const float visibleX = ImGui::GetWindowPos().x + ImGui::GetWindowContentRegionMax().x;
+            const ImGuiStyle &style = ImGui::GetStyle();
+            for (int i = 0; i < static_cast<int>(colors.size()); ++i)
+            {
+                ImGui::PushID(i);
+                const ImVec4 col(colors[i].r, colors[i].g, colors[i].b, 1.0f);
+                if (ImGui::ColorButton("##swatch", col, ImGuiColorEditFlags_NoTooltip,
+                                       ImVec2(swatch, swatch)))
+                    _nextDropColor = colors[i];
+                ImGui::PopID();
+
+                const float nextX = ImGui::GetItemRectMax().x + style.ItemSpacing.x + swatch;
+                if (i + 1 < static_cast<int>(colors.size()) && nextX < visibleX)
+                    ImGui::SameLine();
+            }
+        }
+
+        ImGui::ColorEdit3("Drop Color", (float *)&_nextDropColor);
+        ImGui::Checkbox("Random drops use palette", &_randomUsesPalette);
+
+        ImGui::Spacing();
+        // Nondestructive recolor: re-skin the whole piece to this palette.
+        if (!_palettes.empty() && ImGui::Button("Recolor to palette"))
+            _artwork.setRecolor(_palettes[_activePalette].colors);
+        ImGui::SameLine();
+        if (ImGui::Button("Restore colors"))
+            _artwork.clearRecolor();
+        if (_artwork.isRecolorActive())
+            ImGui::TextColored(Theme::Accent, "Recolor active (originals preserved)");
+    }
+
+    // --- Patterns ---
+    if (header("Patterns", false))
+    {
+        ImGui::SliderFloat("Comb spacing", &_patternSpacing, 10.0f, 120.0f, "%.0f px");
+        ImGui::SliderInt("Stone drops", &_stoneDrops, 5, 200);
+        const float avail = ImGui::GetContentRegionAvail().x;
+        const float halfW = (avail - ImGui::GetStyle().ItemSpacing.x) * 0.5f;
+        if (ImGui::Button("Stone", ImVec2(halfW, 0.0f)))
+            applyStone();
+        ImGui::SameLine();
+        if (ImGui::Button("Nonpareil", ImVec2(-FLT_MIN, 0.0f)))
+            applyNonpareil();
+        if (ImGui::Button("Gel-git", ImVec2(halfW, 0.0f)))
+            applyGelGit();
+        ImGui::SameLine();
+        if (ImGui::Button("Chevron", ImVec2(-FLT_MIN, 0.0f)))
+            applyChevron();
+    }
+
+    // --- Canvas ---
+    if (header("Canvas", true))
+    {
+        ImGui::ColorEdit3("Background", (float *)&_backgroundColor);
+        ImGui::ColorEdit3("Matte", (float *)&_outsideColor);
+        helpMarker("Color of the area around the canvas frame.");
+
+        ImGui::InputInt2("Size", _canvasSize);
+
+        struct Preset { const char *label; int w, h; };
+        static const Preset presets[] = {
+            {"1:1", 1000, 1000}, {"4:3", 1200, 900}, {"3:2", 1200, 800},
+            {"16:9", 1280, 720}, {"3:4", 900, 1200}};
+        for (int i = 0; i < 5; ++i)
+        {
+            if (i > 0)
+                ImGui::SameLine();
+            if (ImGui::SmallButton(presets[i].label))
+            {
+                _canvasSize[0] = presets[i].w;
+                _canvasSize[1] = presets[i].h;
+            }
+        }
+
+        if (ImGui::Button("New Canvas"))
+        {
+            const int w = std::clamp(_canvasSize[0], 16, 8192);
+            const int h = std::clamp(_canvasSize[1], 16, 8192);
+            _canvasSize[0] = w;
+            _canvasSize[1] = h;
+            _artwork.load(w, h, {}); // fresh canvas at the chosen size
+        }
+        ImGui::SameLine();
+        ImGui::TextDisabled("clears the piece");
+    }
+
+    // --- Project ---
+    if (header("Project", false))
+    {
+        ImGui::InputText("Path", _projectPath, sizeof(_projectPath));
+        const float avail = ImGui::GetContentRegionAvail().x;
+        const float halfW = (avail - ImGui::GetStyle().ItemSpacing.x) * 0.5f;
+        if (ImGui::Button("Save", ImVec2(halfW, 0.0f)))
+            promptSaveProject();
+        ImGui::SameLine();
+        if (ImGui::Button("Load", ImVec2(-FLT_MIN, 0.0f)))
+            promptLoadProject();
+        if (!_projectStatus.empty())
+            ImGui::TextWrapped("%s", _projectStatus.c_str());
+    }
+
+    // --- Export ---
+    if (header("Export", false))
+    {
+        ImGui::InputText("PNG file", _exportPath, sizeof(_exportPath));
+        ImGui::SliderFloat("Scale", &_exportScale, 0.5f, 8.0f, "%.1fx");
+
+        if (ImGui::SmallButton("1x"))
+            _exportScale = 1.0f;
+        ImGui::SameLine();
+        if (ImGui::SmallButton("2x"))
+            _exportScale = 2.0f;
+        ImGui::SameLine();
+        if (ImGui::SmallButton("4x"))
+            _exportScale = 4.0f;
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Print (300dpi A4)"))
+        {
+            const int longEdge = std::max(_artwork.width(), _artwork.height());
+            _exportScale = 3508.0f / static_cast<float>(longEdge);
+        }
+
+        ImGui::Checkbox("Transparent background", &_exportTransparent);
+        ImGui::TextDisabled("Output: %d x %d px",
+                            static_cast<int>(_artwork.width() * _exportScale),
+                            static_cast<int>(_artwork.height() * _exportScale));
+        if (ImGui::Button("Export PNG", ImVec2(-FLT_MIN, 0.0f)))
+            promptExportPng();
+
+        ImGui::Spacing();
+        ImGui::InputText("SVG file", _svgPath, sizeof(_svgPath));
+        if (ImGui::Button("Export SVG (vector)", ImVec2(-FLT_MIN, 0.0f)))
+            promptExportSvg();
+        ImGui::TextDisabled("SVG ignores symmetry");
+
+        ImGui::Spacing();
+        ImGui::InputText("Timelapse dir", _timelapseDir, sizeof(_timelapseDir));
+        if (FileDialog::available())
+        {
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Browse##tl"))
+            {
+                const std::string d = FileDialog::folder("Timelapse Output Folder");
+                if (!d.empty())
+                    copyToBuffer(_timelapseDir, sizeof(_timelapseDir), d);
+            }
+        }
+        ImGui::SliderInt("Frames", &_timelapseFrames, 10, 300);
+        if (ImGui::Button("Export Timelapse", ImVec2(-FLT_MIN, 0.0f)))
+            exportTimelapse();
+
+        if (!_exportStatus.empty())
+            ImGui::TextWrapped("%s", _exportStatus.c_str());
+    }
+
+    ImGui::End();
+}
+
+void Application::drawStatusBar()
+{
+    ImGuiViewport *vp = ImGui::GetMainViewport();
+    const float h = ImGui::GetFrameHeight();
+    const ImGuiWindowFlags flags =
+        ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_MenuBar;
+
+    const bool open = ImGui::BeginViewportSideBar("##StatusBar", vp, ImGuiDir_Down, h, flags);
+    if (open && ImGui::BeginMenuBar())
+    {
+        const char *toolNames[] = {"Drop", "Tine", "Comb", "Vortex", "Wave", "Eyedropper"};
+        auto sep = []() { ImGui::SameLine(0.0f, 14.0f); ImGui::TextDisabled("|"); ImGui::SameLine(0.0f, 14.0f); };
+
+        ImGui::Text("Tool: %s", toolNames[static_cast<int>(_toolMode)]);
+        sep();
+        ImGui::Text("%d x %d", _artwork.width(), _artwork.height());
+        sep();
+        ImGui::Text("Zoom %.0f%%", _zoom * 100.0f);
+        sep();
+        ImGui::Text("Ops %d", static_cast<int>(_artwork.operations().size()));
+        if (_artwork.isRecolorActive())
+        {
+            sep();
+            ImGui::TextColored(Theme::Accent, "Recolor");
+        }
+
+        // Right-aligned FPS.
+        char fps[32];
+        std::snprintf(fps, sizeof(fps), "%.0f FPS  %.2f ms", ImGui::GetIO().Framerate,
+                      1000.0f / ImGui::GetIO().Framerate);
+        const float tw = ImGui::CalcTextSize(fps).x;
+        ImGui::SameLine(ImGui::GetWindowWidth() - tw - ImGui::GetStyle().FramePadding.x * 2.0f);
+        ImGui::TextDisabled("%s", fps);
+
+        ImGui::EndMenuBar();
+    }
+    ImGui::End();
 }
