@@ -47,11 +47,19 @@ struct VortexOp
     VortexSettings settings;
 };
 
+/** @brief Drag a wavy comb (sine shear) from start to end. */
+struct WaveOp
+{
+    Point start;
+    Point end;
+    WaveSettings settings;
+};
+
 /** @brief Wipe the canvas. Kept in the history so it can be undone. */
 struct ClearOp
 {
 };
 
-using Operation = std::variant<DropOp, TineOp, CombOp, VortexOp, ClearOp>;
+using Operation = std::variant<DropOp, TineOp, CombOp, VortexOp, WaveOp, ClearOp>;
 
 #endif // OPERATION_H

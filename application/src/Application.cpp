@@ -253,6 +253,9 @@ void Application::handleMouseInput(int button, int action, int mods)
             case ToolMode::Comb:
                 _artwork.addComb(startPos, endPos, _combSettings);
                 break;
+            case ToolMode::Wave:
+                _artwork.addWave(startPos, endPos, _waveSettings);
+                break;
             case ToolMode::Drop:
             case ToolMode::Vortex:
             case ToolMode::Eyedropper:
@@ -299,6 +302,10 @@ void Application::handleKeyInput(int key, int scancode, int action, int mods)
         break;
     case GLFW_KEY_V:
         _artwork.addVortex(pos, _vortexSettings);
+        break;
+    case GLFW_KEY_W:
+        _toolMode = ToolMode::Wave;
+        std::cout << "Tool: Wave" << std::endl;
         break;
     case GLFW_KEY_Z:
         if (mods & GLFW_MOD_CONTROL)
@@ -631,6 +638,8 @@ void Application::run()
                 _artwork.previewTine(dragStart, dragEnd, _tineSettings);
             else if (_toolMode == ToolMode::Comb)
                 _artwork.previewComb(dragStart, dragEnd, _combSettings);
+            else if (_toolMode == ToolMode::Wave)
+                _artwork.previewWave(dragStart, dragEnd, _waveSettings);
         }
 
         // Re-tessellate and re-upload only when the ink geometry changed.
@@ -645,9 +654,9 @@ void Application::run()
 
         if (_isDragging)
         {
-            if (_toolMode == ToolMode::Tine)
+            if (_toolMode == ToolMode::Tine || _toolMode == ToolMode::Wave)
             {
-                // Draw a single drag line for the tine
+                // Draw a single drag line for the tine/wave direction
                 _renderer->drawDragLine(dragStart, dragEnd);
             }
             else if (_toolMode == ToolMode::Comb)
@@ -734,6 +743,8 @@ void Application::run()
                     _toolMode = ToolMode::Comb;
                 if (ImGui::MenuItem("Vortex", "V", _toolMode == ToolMode::Vortex))
                     _toolMode = ToolMode::Vortex;
+                if (ImGui::MenuItem("Wave", "W", _toolMode == ToolMode::Wave))
+                    _toolMode = ToolMode::Wave;
                 if (ImGui::MenuItem("Eyedropper", "E", _toolMode == ToolMode::Eyedropper))
                     _toolMode = ToolMode::Eyedropper;
                 ImGui::EndMenu();
@@ -766,7 +777,7 @@ void Application::run()
         {
             ImGui::Begin("Marbling Controls");
 
-            const char *toolNames[] = {"Drop", "Tine", "Comb", "Vortex", "Eyedropper"};
+            const char *toolNames[] = {"Drop", "Tine", "Comb", "Vortex", "Wave", "Eyedropper"};
             ImGui::Text("Active Tool: %s", toolNames[static_cast<int>(_toolMode)]);
             ImGui::Separator();
 
@@ -855,6 +866,12 @@ void Application::run()
                 ImGui::SliderFloat("Vortex Strength (z)", &_vortexSettings.z, 50.0f, 500.0f);
                 ImGui::SliderFloat("Vortex C-Value (c)", &_vortexSettings.c, 10.0f, 100.0f);
                 ImGui::SliderFloat("Vortex Radius (r)", &_vortexSettings.r, 10.0f, 100.0f);
+            }
+
+            if (ImGui::CollapsingHeader("Wave Settings"))
+            {
+                ImGui::SliderFloat("Wave Amplitude", &_waveSettings.amplitude, 2.0f, 120.0f);
+                ImGui::SliderFloat("Wavelength", &_waveSettings.wavelength, 20.0f, 400.0f);
             }
 
             if (ImGui::CollapsingHeader("Patterns", ImGuiTreeNodeFlags_DefaultOpen))

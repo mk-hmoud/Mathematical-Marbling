@@ -129,4 +129,15 @@ struct VortexSettings
     float r = 50.0f;
 };
 
+/**
+ * @brief Holds the configuration for a wavy comb (sine shear): ink is displaced
+ * along the drag direction by amplitude*sin(2*pi*t/wavelength), where t runs
+ * along the axis perpendicular to the drag.
+ */
+struct WaveSettings
+{
+    float amplitude = 25.0f;
+    float wavelength = 120.0f;
+};
+
 #endif // DATATYPES_H

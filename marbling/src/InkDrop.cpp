@@ -64,6 +64,20 @@ void InkDrop::tine(const Point &m, float bx, float by, float z, float c)
     }
 }
 
+void InkDrop::wave(const Point &m, float bx, float by, float amplitude, float wavelength)
+{
+    if (wavelength < 1e-3f)
+        return;
+    Point b(bx, by);
+    Point n(-m.y, m.x); // axis along which the phase advances
+    const float k = 2.0f * static_cast<float>(M_PI) / wavelength;
+    for (auto &v : _boundary)
+    {
+        const float t = (v - b).dot(n);
+        v = v + m * (amplitude * std::sin(k * t));
+    }
+}
+
 void InkDrop::vortex(const Point &pos, float z, float c, float r)
 {
     float u = 1.0f / std::pow(2.0f, 1.0f / c);

@@ -23,6 +23,7 @@ public:
     void tine(const Point &start, const Point &end, const TineSettings &settings);
     void comb(const Point &start, const Point &end, const CombSettings &settings);
     void vortex(const Point &pos, const VortexSettings &settings);
+    void wave(const Point &start, const Point &end, const WaveSettings &settings);
     void clear();
 
     std::vector<Polygon> getPolygons() const;

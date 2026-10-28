@@ -78,6 +78,7 @@ private:
         Tine,
         Comb,
         Vortex,
+        Wave,
         Eyedropper
     };
     ToolMode _toolMode = ToolMode::Drop;
@@ -85,6 +86,7 @@ private:
     VortexSettings _vortexSettings;
     TineSettings _tineSettings;
     CombSettings _combSettings;
+    WaveSettings _waveSettings;
 
     // Pattern controls
     float _patternSpacing = 30.0f; // comb tooth spacing used by patterns

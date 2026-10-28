@@ -48,6 +48,11 @@ void Artwork::addVortex(const Point &pos, const VortexSettings &settings)
     record(VortexOp{pos, settings});
 }
 
+void Artwork::addWave(const Point &start, const Point &end, const WaveSettings &settings)
+{
+    record(WaveOp{start, end, settings});
+}
+
 void Artwork::clear()
 {
     record(ClearOp{});
@@ -113,6 +118,14 @@ void Artwork::previewVortex(const Point &pos, const VortexSettings &settings)
 {
     _previewCanvas = _canvas;
     _previewCanvas.vortex(pos, settings);
+    _previewActive = true;
+    _dirty = true;
+}
+
+void Artwork::previewWave(const Point &start, const Point &end, const WaveSettings &settings)
+{
+    _previewCanvas = _canvas;
+    _previewCanvas.wave(start, end, settings);
     _previewActive = true;
     _dirty = true;
 }
@@ -243,6 +256,8 @@ void Artwork::apply(const Operation &op)
                 _canvas.comb(o.start, o.end, o.settings);
             else if constexpr (std::is_same_v<T, VortexOp>)
                 _canvas.vortex(o.pos, o.settings);
+            else if constexpr (std::is_same_v<T, WaveOp>)
+                _canvas.wave(o.start, o.end, o.settings);
             else if constexpr (std::is_same_v<T, ClearOp>)
                 _canvas.clear();
         },

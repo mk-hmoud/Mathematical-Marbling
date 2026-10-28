@@ -38,6 +38,7 @@ public:
     void addTine(const Point &start, const Point &end, const TineSettings &settings);
     void addComb(const Point &start, const Point &end, const CombSettings &settings);
     void addVortex(const Point &pos, const VortexSettings &settings);
+    void addWave(const Point &start, const Point &end, const WaveSettings &settings);
     void clear();
 
     /**
@@ -83,6 +84,7 @@ public:
     void previewTine(const Point &start, const Point &end, const TineSettings &settings);
     void previewComb(const Point &start, const Point &end, const CombSettings &settings);
     void previewVortex(const Point &pos, const VortexSettings &settings);
+    void previewWave(const Point &start, const Point &end, const WaveSettings &settings);
     void endPreview();
 
     // --- Accessors ---

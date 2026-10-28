@@ -87,6 +87,22 @@ void Canvas::vortex(const Point &pos, const VortexSettings &settings)
     _dirty = true;
 }
 
+void Canvas::wave(const Point &start, const Point &end, const WaveSettings &settings)
+{
+    Point direction = end - start;
+    if (direction.length() < 1e-6f)
+        return;
+    direction.normalize();
+
+    const int n = static_cast<int>(_inkDrops.size());
+#pragma omp parallel for schedule(static) if (n > PARALLEL_THRESHOLD)
+    for (int i = 0; i < n; ++i)
+    {
+        _inkDrops[i].wave(direction, start.x, start.y, settings.amplitude, settings.wavelength);
+    }
+    _dirty = true;
+}
+
 void Canvas::clear()
 {
     _inkDrops.clear();
