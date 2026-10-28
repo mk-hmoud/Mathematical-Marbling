@@ -49,7 +49,7 @@ public:
      * @param coordW,coordH Canvas coordinate extents (for the mirror axes).
      */
     void drawBatchSymmetric(Symmetry sym, int vpX, int vpY, int vpW, int vpH,
-                            float coordW, float coordH);
+                            float coordW, float coordH, int fold = 6);
 
     /**
      * @brief Renders the polygons to an offscreen (multisampled) framebuffer at
@@ -69,7 +69,8 @@ public:
                                               float coordWidth, float coordHeight,
                                               const Color &background,
                                               Symmetry symmetry = Symmetry::None,
-                                              bool transparent = false);
+                                              bool transparent = false,
+                                              int fold = 6);
 
     /**
      * @brief Renders a simple, single-colored line.
@@ -103,6 +104,7 @@ public:
 
 private:
     void drawBatchWithModel(const glm::mat4 &model); // projection * model, one draw
+    void drawRadial(int fold, float coordW, float coordH); // k-fold stencil wedges
 
     Shader _shader;         // uniform-color pipeline, used for lines
     Shader _polygonShader;  // per-vertex-color pipeline, used for the ink batch

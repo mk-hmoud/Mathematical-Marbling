@@ -24,6 +24,7 @@ Application::Application(int width, int height, const char *title)
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 
     glfwWindowHint(GLFW_SAMPLES, 8);
+    glfwWindowHint(GLFW_STENCIL_BITS, 8); // needed for radial (wedge) symmetry
     _window = glfwCreateWindow(width, height, title, nullptr, nullptr);
     if (!_window)
     {
@@ -459,7 +460,7 @@ void Application::exportPng()
     std::vector<unsigned char> pixels = _renderer->renderToPixels(
         _artwork.getPolygons(), pw, ph,
         static_cast<float>(_artwork.width()), static_cast<float>(_artwork.height()),
-        _backgroundColor, _symmetry, _exportTransparent);
+        _backgroundColor, _symmetry, _exportTransparent, _symmetryFold);
 
     if (pixels.empty())
     {
@@ -523,7 +524,7 @@ void Application::exportTimelapse()
 
         std::vector<unsigned char> px = _renderer->renderToPixels(
             frame.getPolygons(), pw, ph, static_cast<float>(w), static_cast<float>(h),
-            _backgroundColor, _symmetry, _exportTransparent);
+            _backgroundColor, _symmetry, _exportTransparent, _symmetryFold);
         if (px.empty())
         {
             _exportStatus = "Timelapse failed: could not render a frame.";
@@ -656,7 +657,7 @@ void Application::run()
         }
         _renderer->drawBatchSymmetric(_symmetry, view.vpX, view.vpY, view.vpW, view.vpH,
                                       static_cast<float>(_artwork.width()),
-                                      static_cast<float>(_artwork.height()));
+                                      static_cast<float>(_artwork.height()), _symmetryFold);
 
         if (_isDragging)
         {
@@ -737,6 +738,9 @@ void Application::run()
                     _symmetry = Symmetry::MirrorY;
                 if (ImGui::MenuItem("Symmetry: Quad", nullptr, _symmetry == Symmetry::Quad))
                     _symmetry = Symmetry::Quad;
+                if (ImGui::MenuItem("Symmetry: Radial", nullptr, _symmetry == Symmetry::Radial))
+                    _symmetry = Symmetry::Radial;
+                ImGui::SliderInt("Radial folds", &_symmetryFold, 2, 16);
                 ImGui::EndMenu();
             }
             if (ImGui::BeginMenu("Tools"))

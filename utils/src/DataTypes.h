@@ -71,7 +71,8 @@ enum class Symmetry
     None,
     MirrorX, // left/right reflection about the vertical center
     MirrorY, // top/bottom reflection about the horizontal center
-    Quad     // reflection about both axes (4-fold)
+    Quad,    // reflection about both axes (4-fold)
+    Radial   // k-fold rotational (kaleidoscope), see fold count
 };
 
 struct Polygon

@@ -216,14 +216,75 @@ void Renderer::drawBatchWithModel(const glm::mat4 &model)
     glDisable(GL_BLEND);
 }
 
+void Renderer::drawRadial(int fold, float coordW, float coordH)
+{
+    if (fold < 2)
+        fold = 2;
+
+    const glm::vec2 center(coordW * 0.5f, coordH * 0.5f);
+    const float radius = std::sqrt(coordW * coordW + coordH * coordH); // covers canvas
+    const float twoPi = 2.0f * static_cast<float>(M_PI);
+
+    glEnable(GL_STENCIL_TEST);
+    glBindVertexArray(_vao);
+    glBindBuffer(GL_ARRAY_BUFFER, _vbo);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
+    for (int i = 0; i < fold; ++i)
+    {
+        const float a0 = twoPi * i / fold;
+        const float a1 = twoPi * (i + 1) / fold;
+
+        // Build a wedge fan (center + arc) in canvas coordinates.
+        const int seg = 10;
+        std::vector<Point> fan;
+        fan.reserve(seg + 2);
+        fan.emplace_back(center.x, center.y);
+        for (int j = 0; j <= seg; ++j)
+        {
+            const float a = a0 + (a1 - a0) * j / seg;
+            fan.emplace_back(center.x + std::cos(a) * radius, center.y + std::sin(a) * radius);
+        }
+
+        // Stamp the wedge into the stencil buffer (no color writes).
+        glClear(GL_STENCIL_BUFFER_BIT);
+        glStencilFunc(GL_ALWAYS, 1, 0xFF);
+        glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+        glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+        _shader.use();
+        _shader.setMat4("projection", _projection);
+        glBufferData(GL_ARRAY_BUFFER, fan.size() * sizeof(Point), fan.data(), GL_DYNAMIC_DRAW);
+        glDrawArrays(GL_TRIANGLE_FAN, 0, static_cast<GLsizei>(fan.size()));
+        glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+
+        // Draw the source batch rotated into this wedge, clipped by the stencil.
+        glStencilFunc(GL_EQUAL, 1, 0xFF);
+        glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
+        glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(center, 0.0f));
+        model = glm::rotate(model, a0, glm::vec3(0.0f, 0.0f, 1.0f));
+        model = glm::translate(model, glm::vec3(-center, 0.0f));
+        drawBatchWithModel(model);
+    }
+
+    glDisable(GL_STENCIL_TEST);
+}
+
 void Renderer::drawBatchSymmetric(Symmetry sym, int vpX, int vpY, int vpW, int vpH,
-                                  float coordW, float coordH)
+                                  float coordW, float coordH, int fold)
 {
     if (sym == Symmetry::None)
     {
         glEnable(GL_SCISSOR_TEST);
         glScissor(vpX, vpY, vpW, vpH);
         drawBatch();
+        return;
+    }
+
+    if (sym == Symmetry::Radial)
+    {
+        glEnable(GL_SCISSOR_TEST);
+        glScissor(vpX, vpY, vpW, vpH);
+        drawRadial(fold, coordW, coordH);
         return;
     }
 
@@ -276,7 +337,8 @@ std::vector<unsigned char> Renderer::renderToPixels(const std::vector<Polygon> &
                                                     float coordWidth, float coordHeight,
                                                     const Color &background,
                                                     Symmetry symmetry,
-                                                    bool transparent)
+                                                    bool transparent,
+                                                    int fold)
 {
     if (pixelWidth <= 0 || pixelHeight <= 0)
         return {};
@@ -298,13 +360,18 @@ std::vector<unsigned char> Renderer::renderToPixels(const std::vector<Polygon> &
     const GLsizei samples = static_cast<GLsizei>(maxSamples >= 4 ? 4 : maxSamples);
 
     // --- Multisampled target to render into (smooth edges) ---
-    GLuint msFbo = 0, msColor = 0;
+    GLuint msFbo = 0, msColor = 0, msStencil = 0;
     glGenFramebuffers(1, &msFbo);
     glBindFramebuffer(GL_FRAMEBUFFER, msFbo);
     glGenRenderbuffers(1, &msColor);
     glBindRenderbuffer(GL_RENDERBUFFER, msColor);
     glRenderbufferStorageMultisample(GL_RENDERBUFFER, samples, GL_RGBA8, pixelWidth, pixelHeight);
     glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, msColor);
+    // Stencil, needed for radial (wedge-clipped) symmetry.
+    glGenRenderbuffers(1, &msStencil);
+    glBindRenderbuffer(GL_RENDERBUFFER, msStencil);
+    glRenderbufferStorageMultisample(GL_RENDERBUFFER, samples, GL_DEPTH24_STENCIL8, pixelWidth, pixelHeight);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, msStencil);
 
     std::vector<unsigned char> pixels;
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE)
@@ -318,7 +385,7 @@ std::vector<unsigned char> Renderer::renderToPixels(const std::vector<Polygon> &
         glClear(GL_COLOR_BUFFER_BIT);
 
         updateBatch(polygons);
-        drawBatchSymmetric(symmetry, 0, 0, pixelWidth, pixelHeight, coordWidth, coordHeight);
+        drawBatchSymmetric(symmetry, 0, 0, pixelWidth, pixelHeight, coordWidth, coordHeight, fold);
         glDisable(GL_SCISSOR_TEST);
 
         // --- Resolve the multisampled image into a regular texture FBO ---
@@ -360,6 +427,7 @@ std::vector<unsigned char> Renderer::renderToPixels(const std::vector<Polygon> &
     // Restore the default framebuffer; the main loop resets viewport/projection.
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glDeleteRenderbuffers(1, &msColor);
+    glDeleteRenderbuffers(1, &msStencil);
     glDeleteFramebuffers(1, &msFbo);
 
     return pixels;

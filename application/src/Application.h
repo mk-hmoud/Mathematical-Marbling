@@ -114,6 +114,7 @@ private:
 
     // View options
     Symmetry _symmetry = Symmetry::None;
+    int _symmetryFold = 6; // k for radial symmetry
 
     // Export state
     char _exportPath[256] = "marbling.png";
