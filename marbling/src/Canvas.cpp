@@ -78,9 +78,34 @@ void Canvas::comb(const Point &start, const Point &end, const CombSettings &sett
         {
             const Point tineStart =
                 combHandleCenter - offset + perpendicular * (static_cast<float>(t) * settings.spacing);
-            _inkDrops[i].tine(direction, tineStart.x, tineStart.y,
-                              settings.properties.z, settings.properties.c);
+            if (settings.localized)
+            {
+                // Each tooth is a finite localized Oseen stroke along the drag.
+                const Point tineEnd = tineStart + direction * length;
+                _inkDrops[i].oseenStroke(tineStart, tineEnd, settings.stroke.spread,
+                                         settings.stroke.strength, settings.stroke.steps);
+            }
+            else
+            {
+                _inkDrops[i].tine(direction, tineStart.x, tineStart.y,
+                                  settings.properties.z, settings.properties.c);
+            }
         }
+        _inkDrops[i].resample(MAX_EDGE);
+    }
+    _dirty = true;
+}
+
+void Canvas::stroke(const Point &start, const Point &end, const StrokeSettings &settings)
+{
+    if ((end - start).length() < 1e-6f)
+        return;
+
+    const int n = static_cast<int>(_inkDrops.size());
+#pragma omp parallel for schedule(static) if (n > PARALLEL_THRESHOLD)
+    for (int i = 0; i < n; ++i)
+    {
+        _inkDrops[i].oseenStroke(start, end, settings.spread, settings.strength, settings.steps);
         _inkDrops[i].resample(MAX_EDGE);
     }
     _dirty = true;

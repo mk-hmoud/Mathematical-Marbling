@@ -33,6 +33,7 @@ private:
         Comb,
         Vortex,
         Wave,
+        Stroke,
         Eyedropper
     };
 
@@ -112,6 +113,7 @@ private:
     TineSettings _tineSettings;
     CombSettings _combSettings;
     WaveSettings _waveSettings;
+    StrokeSettings _strokeSettings;
 
     // Pattern controls
     float _patternSpacing = 30.0f; // comb tooth spacing used by patterns

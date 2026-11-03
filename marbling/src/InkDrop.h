@@ -15,6 +15,13 @@ public:
     void tine(const Point &m, float x, float y, float z, float c);
     void wave(const Point &m, float bx, float by, float amplitude, float wavelength);
 
+    // Finite, localized "short stroke" (Oseen flow) from a to b. Unlike tine()
+    // (an infinite line), this is a local deformation that decays in every
+    // direction with falloff length L, integrated in `steps` sub-steps as the
+    // stylus moves along the path. `strength` scales how far core fluid is
+    // carried (strength*|b-a|).
+    void oseenStroke(const Point &a, const Point &b, float L, float strength, int steps);
+
     // Re-sample the boundary so no edge is longer than maxEdgeLen, inserting
     // points on stretched edges. Marbling operations stretch the boundary into
     // thin filaments; without re-sampling the fixed vertex set spreads apart

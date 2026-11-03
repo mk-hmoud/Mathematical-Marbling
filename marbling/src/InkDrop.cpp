@@ -82,6 +82,55 @@ void InkDrop::wave(const Point &m, float bx, float by, float amplitude, float wa
     }
 }
 
+void InkDrop::oseenStroke(const Point &a, const Point &b, float L, float strength, int steps)
+{
+    // Finite localized stroke via Oseen flow. The velocity field of a stylus
+    // moving along +x (local frame), stylus at the origin, is the curl of the
+    // stream function psi = y*exp(-r/L):
+    //     vx = exp(-r/L) * (1 - y^2/(r L))
+    //     vy = exp(-r/L) * (x y /(r L))
+    // It decays in every direction (localized, unlike an infinite tine) and is
+    // divergence-free, so integrating it in small steps is ~area-preserving.
+    // We move the stylus from a to b over `steps` sub-steps, carrying each point
+    // along the flow; core fluid is displaced ~ strength*|b-a|.
+    Point dir = b - a;
+    const float len = dir.length();
+    if (len < 1e-6f || L < 1e-3f || steps < 1)
+        return;
+    dir.x /= len;
+    dir.y /= len;
+    const Point perp(-dir.y, dir.x);
+    const float stepLen = strength * len / static_cast<float>(steps);
+
+    for (int s = 0; s < steps; ++s)
+    {
+        const float ts = (static_cast<float>(s) + 0.5f) / static_cast<float>(steps);
+        const Point stylus = a + dir * (len * ts);
+        for (auto &v : _boundary)
+        {
+            const Point d = v - stylus;
+            const float x = d.dot(dir);  // local coord along motion
+            const float y = d.dot(perp); // local coord perpendicular
+            const float r = std::sqrt(x * x + y * y);
+
+            float vx, vy;
+            if (r < 1e-4f)
+            {
+                vx = 1.0f; // smooth limit at the core: full forward motion
+                vy = 0.0f;
+            }
+            else
+            {
+                const float e = std::exp(-r / L);
+                vx = e * (1.0f - y * y / (r * L));
+                vy = e * (x * y / (r * L));
+            }
+            v.x += (vx * dir.x + vy * perp.x) * stepLen;
+            v.y += (vx * dir.y + vy * perp.y) * stepLen;
+        }
+    }
+}
+
 void InkDrop::vortex(const Point &pos, float strength, float coreRadius)
 {
     // Lamb-Oseen vortex. The rotation angle follows the vortex's angular-velocity

@@ -304,6 +304,9 @@ void Application::handleMouseInput(int button, int action, int mods)
             case ToolMode::Wave:
                 _artwork.addWave(startPos, endPos, _waveSettings);
                 break;
+            case ToolMode::Stroke:
+                _artwork.addStroke(startPos, endPos, _strokeSettings);
+                break;
             case ToolMode::Drop:
             case ToolMode::Vortex:
             case ToolMode::Eyedropper:
@@ -354,6 +357,17 @@ void Application::handleKeyInput(int key, int scancode, int action, int mods)
     case GLFW_KEY_W:
         _toolMode = ToolMode::Wave;
         std::cout << "Tool: Wave" << std::endl;
+        break;
+    case GLFW_KEY_S:
+        if (mods & GLFW_MOD_CONTROL)
+        {
+            promptSaveProject(); // Ctrl+S saves
+        }
+        else
+        {
+            _toolMode = ToolMode::Stroke;
+            std::cout << "Tool: Stroke" << std::endl;
+        }
         break;
     case GLFW_KEY_Z:
         if (mods & GLFW_MOD_CONTROL)
@@ -793,6 +807,8 @@ void Application::run()
                 _artwork.previewComb(dragStart, dragEnd, _combSettings);
             else if (_toolMode == ToolMode::Wave)
                 _artwork.previewWave(dragStart, dragEnd, _waveSettings);
+            else if (_toolMode == ToolMode::Stroke)
+                _artwork.previewStroke(dragStart, dragEnd, _strokeSettings);
         }
 
         // Re-tessellate and re-upload only when the ink geometry changed.
@@ -807,9 +823,10 @@ void Application::run()
 
         if (_isDragging)
         {
-            if (_toolMode == ToolMode::Tine || _toolMode == ToolMode::Wave)
+            if (_toolMode == ToolMode::Tine || _toolMode == ToolMode::Wave ||
+                _toolMode == ToolMode::Stroke)
             {
-                // Draw a single drag line for the tine/wave direction
+                // Draw a single drag line for the tine/wave/stroke direction
                 _renderer->drawDragLine(dragStart, dragEnd);
             }
             else if (_toolMode == ToolMode::Comb)
@@ -998,6 +1015,7 @@ void Application::drawToolsPanel()
         toolButton("Comb", "C", ToolMode::Comb);
         toolButton("Vortex", "V", ToolMode::Vortex);
         toolButton("Wave", "W", ToolMode::Wave);
+        toolButton("Stroke", "S", ToolMode::Stroke);
         toolButton("Eyedropper", "E", ToolMode::Eyedropper);
 
         ImGui::Spacing();
@@ -1050,13 +1068,14 @@ void Application::drawPropertiesPanel()
         return open;
     };
 
-    const char *toolNames[] = {"Drop", "Tine", "Comb", "Vortex", "Wave", "Eyedropper"};
+    const char *toolNames[] = {"Drop", "Tine", "Comb", "Vortex", "Wave", "Stroke", "Eyedropper"};
     const char *toolDesc[] = {
         "Click to place ink. Hold for concentric rings.",
         "Drag to draw a single tine stroke.",
         "Drag to pull a row of evenly spaced tines.",
         "Click to swirl the ink into a vortex.",
         "Drag for a rhythmic sine-wave comb.",
+        "Drag a finite, localized stylus stroke (Oseen flow).",
         "Click the canvas to sample a color."};
     const int tool = static_cast<int>(_toolMode);
 
@@ -1085,8 +1104,20 @@ void Application::drawPropertiesPanel()
     case ToolMode::Comb:
         ImGui::SliderInt("Tines", &_combSettings.numTines, 2, 50);
         ImGui::SliderFloat("Spacing", &_combSettings.spacing, 5.0f, 100.0f, "%.0f px");
-        ImGui::SliderFloat("Strength (z)", &_combSettings.properties.z, 10.0f, 200.0f);
-        ImGui::SliderFloat("Falloff (c)", &_combSettings.properties.c, 1.0f, 50.0f);
+        ImGui::Checkbox("Localized teeth (Oseen)", &_combSettings.localized);
+        helpMarker("Each tooth is a finite localized stroke instead of an "
+                   "infinite tine line, so the comb only affects ink near the drag.");
+        if (_combSettings.localized)
+        {
+            ImGui::SliderFloat("Spread", &_combSettings.stroke.spread, 8.0f, 150.0f, "%.0f px");
+            ImGui::SliderFloat("Push", &_combSettings.stroke.strength, 0.1f, 3.0f, "%.2fx");
+            ImGui::SliderInt("Steps", &_combSettings.stroke.steps, 1, 16);
+        }
+        else
+        {
+            ImGui::SliderFloat("Strength (z)", &_combSettings.properties.z, 10.0f, 200.0f);
+            ImGui::SliderFloat("Falloff (c)", &_combSettings.properties.c, 1.0f, 50.0f);
+        }
         break;
     case ToolMode::Vortex:
         ImGui::SliderFloat("Swirl strength", &_vortexSettings.strength, -6.0f, 6.0f, "%.2f rad");
@@ -1097,6 +1128,16 @@ void Application::drawPropertiesPanel()
     case ToolMode::Wave:
         ImGui::SliderFloat("Amplitude", &_waveSettings.amplitude, 2.0f, 120.0f, "%.0f px");
         ImGui::SliderFloat("Wavelength", &_waveSettings.wavelength, 20.0f, 400.0f, "%.0f px");
+        break;
+    case ToolMode::Stroke:
+        ImGui::SliderFloat("Spread", &_strokeSettings.spread, 8.0f, 200.0f, "%.0f px");
+        helpMarker("Oseen falloff length: how far the stroke's influence reaches. "
+                   "Larger = broader, softer; smaller = tight and local.");
+        ImGui::SliderFloat("Push", &_strokeSettings.strength, 0.1f, 3.0f, "%.2fx");
+        helpMarker("How far core ink is carried, as a multiple of the drag length.");
+        ImGui::SliderInt("Steps", &_strokeSettings.steps, 1, 16);
+        helpMarker("Flow-integration sub-steps; higher is smoother and more "
+                   "area-preserving, but costs more.");
         break;
     case ToolMode::Eyedropper:
         ImGui::TextDisabled("No settings. Sampled color becomes the drop color.");
@@ -1294,7 +1335,7 @@ void Application::drawStatusBar()
     const bool open = ImGui::BeginViewportSideBar("##StatusBar", vp, ImGuiDir_Down, h, flags);
     if (open && ImGui::BeginMenuBar())
     {
-        const char *toolNames[] = {"Drop", "Tine", "Comb", "Vortex", "Wave", "Eyedropper"};
+        const char *toolNames[] = {"Drop", "Tine", "Comb", "Vortex", "Wave", "Stroke", "Eyedropper"};
         auto sep = []() { ImGui::SameLine(0.0f, 14.0f); ImGui::TextDisabled("|"); ImGui::SameLine(0.0f, 14.0f); };
 
         ImGui::Text("Tool: %s", toolNames[static_cast<int>(_toolMode)]);

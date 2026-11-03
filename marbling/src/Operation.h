@@ -55,11 +55,19 @@ struct WaveOp
     WaveSettings settings;
 };
 
+/** @brief Drag a finite localized Oseen stroke from start to end. */
+struct StrokeOp
+{
+    Point start;
+    Point end;
+    StrokeSettings settings;
+};
+
 /** @brief Wipe the canvas. Kept in the history so it can be undone. */
 struct ClearOp
 {
 };
 
-using Operation = std::variant<DropOp, TineOp, CombOp, VortexOp, WaveOp, ClearOp>;
+using Operation = std::variant<DropOp, TineOp, CombOp, VortexOp, WaveOp, StrokeOp, ClearOp>;
 
 #endif // OPERATION_H

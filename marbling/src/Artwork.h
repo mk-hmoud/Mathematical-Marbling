@@ -39,6 +39,7 @@ public:
     void addComb(const Point &start, const Point &end, const CombSettings &settings);
     void addVortex(const Point &pos, const VortexSettings &settings);
     void addWave(const Point &start, const Point &end, const WaveSettings &settings);
+    void addStroke(const Point &start, const Point &end, const StrokeSettings &settings);
     void clear();
 
     /**
@@ -85,6 +86,7 @@ public:
     void previewComb(const Point &start, const Point &end, const CombSettings &settings);
     void previewVortex(const Point &pos, const VortexSettings &settings);
     void previewWave(const Point &start, const Point &end, const WaveSettings &settings);
+    void previewStroke(const Point &start, const Point &end, const StrokeSettings &settings);
     void endPreview();
 
     // --- Accessors ---

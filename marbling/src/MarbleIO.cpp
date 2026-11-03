@@ -48,13 +48,20 @@ bool MarbleIO::save(const std::string &path, int width, int height,
                 else if constexpr (std::is_same_v<T, CombOp>)
                     out << "comb " << o.start.x << ' ' << o.start.y << ' ' << o.end.x << ' ' << o.end.y
                         << ' ' << o.settings.numTines << ' ' << o.settings.spacing
-                        << ' ' << o.settings.properties.z << ' ' << o.settings.properties.c << '\n';
+                        << ' ' << o.settings.properties.z << ' ' << o.settings.properties.c
+                        << ' ' << (o.settings.localized ? 1 : 0)
+                        << ' ' << o.settings.stroke.spread << ' ' << o.settings.stroke.strength
+                        << ' ' << o.settings.stroke.steps << '\n';
                 else if constexpr (std::is_same_v<T, VortexOp>)
                     out << "vortex " << o.pos.x << ' ' << o.pos.y
                         << ' ' << o.settings.strength << ' ' << o.settings.coreRadius << '\n';
                 else if constexpr (std::is_same_v<T, WaveOp>)
                     out << "wave " << o.start.x << ' ' << o.start.y << ' ' << o.end.x << ' ' << o.end.y
                         << ' ' << o.settings.amplitude << ' ' << o.settings.wavelength << '\n';
+                else if constexpr (std::is_same_v<T, StrokeOp>)
+                    out << "stroke " << o.start.x << ' ' << o.start.y << ' ' << o.end.x << ' ' << o.end.y
+                        << ' ' << o.settings.spread << ' ' << o.settings.strength
+                        << ' ' << o.settings.steps << '\n';
                 else if constexpr (std::is_same_v<T, ClearOp>)
                     out << "clear\n";
             },
@@ -134,6 +141,10 @@ bool MarbleIO::load(const std::string &path, int &width, int &height,
             CombOp o;
             if (!(ss >> o.start.x >> o.start.y >> o.end.x >> o.end.y >> o.settings.numTines >> o.settings.spacing >> o.settings.properties.z >> o.settings.properties.c))
                 return false;
+            // Optional localized-stroke fields (absent in older files -> defaults).
+            int localized = 0;
+            if (ss >> localized >> o.settings.stroke.spread >> o.settings.stroke.strength >> o.settings.stroke.steps)
+                o.settings.localized = (localized != 0);
             ops.push_back(o);
         }
         else if (tag == "vortex")
@@ -147,6 +158,13 @@ bool MarbleIO::load(const std::string &path, int &width, int &height,
         {
             WaveOp o;
             if (!(ss >> o.start.x >> o.start.y >> o.end.x >> o.end.y >> o.settings.amplitude >> o.settings.wavelength))
+                return false;
+            ops.push_back(o);
+        }
+        else if (tag == "stroke")
+        {
+            StrokeOp o;
+            if (!(ss >> o.start.x >> o.start.y >> o.end.x >> o.end.y >> o.settings.spread >> o.settings.strength >> o.settings.steps))
                 return false;
             ops.push_back(o);
         }

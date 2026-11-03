@@ -102,6 +102,19 @@ struct TineSettings
 };
 
 /**
+ * @brief Configuration for a finite, localized "short stroke" (Oseen flow).
+ * Unlike a tine (an infinite line), the deformation is a local blob that decays
+ * in every direction with the falloff length @ref spread, producing the
+ * compression-ahead / V-wake-behind of a real stylus poke.
+ */
+struct StrokeSettings
+{
+    float spread = 45.0f;  // Oseen falloff length L (px): larger = broader, softer
+    float strength = 1.0f; // push multiplier: core fluid moves strength * drag length
+    int steps = 6;         // flow-integration sub-steps (higher = more area-preserving)
+};
+
+/**
  * @brief Holds the configuration for a "comb" (multiple tines).
  */
 struct CombSettings
@@ -118,6 +131,12 @@ struct CombSettings
      * @brief The shared physical properties for all tines in this comb.
      */
     TineSettings properties;
+    /**
+     * @brief When true, each tooth is a finite localized Oseen stroke
+     * (see @ref stroke) rather than an infinite tine line.
+     */
+    bool localized = false;
+    StrokeSettings stroke;
 };
 
 /**

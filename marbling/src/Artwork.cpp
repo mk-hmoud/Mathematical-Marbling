@@ -53,6 +53,11 @@ void Artwork::addWave(const Point &start, const Point &end, const WaveSettings &
     record(WaveOp{start, end, settings});
 }
 
+void Artwork::addStroke(const Point &start, const Point &end, const StrokeSettings &settings)
+{
+    record(StrokeOp{start, end, settings});
+}
+
 void Artwork::clear()
 {
     record(ClearOp{});
@@ -126,6 +131,14 @@ void Artwork::previewWave(const Point &start, const Point &end, const WaveSettin
 {
     _previewCanvas = _canvas;
     _previewCanvas.wave(start, end, settings);
+    _previewActive = true;
+    _dirty = true;
+}
+
+void Artwork::previewStroke(const Point &start, const Point &end, const StrokeSettings &settings)
+{
+    _previewCanvas = _canvas;
+    _previewCanvas.stroke(start, end, settings);
     _previewActive = true;
     _dirty = true;
 }
@@ -258,6 +271,8 @@ void Artwork::apply(const Operation &op)
                 _canvas.vortex(o.pos, o.settings);
             else if constexpr (std::is_same_v<T, WaveOp>)
                 _canvas.wave(o.start, o.end, o.settings);
+            else if constexpr (std::is_same_v<T, StrokeOp>)
+                _canvas.stroke(o.start, o.end, o.settings);
             else if constexpr (std::is_same_v<T, ClearOp>)
                 _canvas.clear();
         },
