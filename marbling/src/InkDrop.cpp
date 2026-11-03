@@ -82,22 +82,30 @@ void InkDrop::wave(const Point &m, float bx, float by, float amplitude, float wa
     }
 }
 
-void InkDrop::vortex(const Point &pos, float z, float c, float r)
+void InkDrop::vortex(const Point &pos, float strength, float coreRadius)
 {
-    float u = 1.0f / std::pow(2.0f, 1.0f / c);
+    // Lamb-Oseen vortex. The rotation angle follows the vortex's angular-velocity
+    // profile  a(h) = strength * rc^2 * (1 - exp(-h^2/rc^2)) / h^2,  which is
+    // maximal (= strength) at the centre and decays smoothly to zero outward.
+    // Because (1 - exp(-h^2/rc^2)) ~ h^2/rc^2 as h -> 0, a(h) -> strength with no
+    // singularity: nothing blows up near the centre (the old point-vortex form
+    // diverged there and self-intersected).
+    const float rc = (coreRadius > 1e-3f) ? coreRadius : 1e-3f;
+    const float rc2 = rc * rc;
     for (auto &v : _boundary)
     {
-        Point translated = v - pos;
-        float h = translated.length();
-        if (h == 0.0f)
-            continue;
-        float i_val = z * std::pow(u, h - r);
-        float a = i_val / h;
-        float ca = std::cos(a);
-        float sa = std::sin(a);
-        float rx = translated.x * ca - translated.y * sa;
-        float ry = translated.x * sa + translated.y * ca;
-        v = pos + Point(rx, ry);
+        const Point d = v - pos;
+        const float h2 = d.x * d.x + d.y * d.y;
+
+        float a;
+        if (h2 < 1e-4f)
+            a = strength; // smooth limit at the centre
+        else
+            a = strength * rc2 * (1.0f - std::exp(-h2 / rc2)) / h2;
+
+        const float ca = std::cos(a);
+        const float sa = std::sin(a);
+        v = pos + Point(d.x * ca - d.y * sa, d.x * sa + d.y * ca);
     }
 }
 

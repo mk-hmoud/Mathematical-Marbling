@@ -123,11 +123,13 @@ struct CombSettings
 /**
  * @brief Holds the configuration for a vortex.
  */
+// Lamb-Oseen vortex: a physically-based swirl whose rotation is maximal at the
+// centre and decays smoothly outward with no singularity (unlike a point
+// vortex, nothing blows up near the centre).
 struct VortexSettings
 {
-    float z = 200.0f;
-    float c = 60.0f;
-    float r = 50.0f;
+    float strength = 1.6f;    // peak rotation at the core, radians; sign sets spin direction
+    float coreRadius = 55.0f; // core radius r_c (px): where the swirl is tightest
 };
 
 /**

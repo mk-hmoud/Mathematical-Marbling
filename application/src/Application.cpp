@@ -1089,9 +1089,10 @@ void Application::drawPropertiesPanel()
         ImGui::SliderFloat("Falloff (c)", &_combSettings.properties.c, 1.0f, 50.0f);
         break;
     case ToolMode::Vortex:
-        ImGui::SliderFloat("Strength (z)", &_vortexSettings.z, 50.0f, 500.0f);
-        ImGui::SliderFloat("C-Value (c)", &_vortexSettings.c, 10.0f, 100.0f);
-        ImGui::SliderFloat("Radius (r)", &_vortexSettings.r, 10.0f, 100.0f);
+        ImGui::SliderFloat("Swirl strength", &_vortexSettings.strength, -6.0f, 6.0f, "%.2f rad");
+        helpMarker("Rotation at the core, in radians; sign sets the spin direction.");
+        ImGui::SliderFloat("Core radius", &_vortexSettings.coreRadius, 10.0f, 250.0f, "%.0f px");
+        helpMarker("Lamb-Oseen core size: smaller = a tighter, more concentrated swirl.");
         break;
     case ToolMode::Wave:
         ImGui::SliderFloat("Amplitude", &_waveSettings.amplitude, 2.0f, 120.0f, "%.0f px");

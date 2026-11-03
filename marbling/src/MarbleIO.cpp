@@ -51,7 +51,7 @@ bool MarbleIO::save(const std::string &path, int width, int height,
                         << ' ' << o.settings.properties.z << ' ' << o.settings.properties.c << '\n';
                 else if constexpr (std::is_same_v<T, VortexOp>)
                     out << "vortex " << o.pos.x << ' ' << o.pos.y
-                        << ' ' << o.settings.z << ' ' << o.settings.c << ' ' << o.settings.r << '\n';
+                        << ' ' << o.settings.strength << ' ' << o.settings.coreRadius << '\n';
                 else if constexpr (std::is_same_v<T, WaveOp>)
                     out << "wave " << o.start.x << ' ' << o.start.y << ' ' << o.end.x << ' ' << o.end.y
                         << ' ' << o.settings.amplitude << ' ' << o.settings.wavelength << '\n';
@@ -139,7 +139,7 @@ bool MarbleIO::load(const std::string &path, int &width, int &height,
         else if (tag == "vortex")
         {
             VortexOp o;
-            if (!(ss >> o.pos.x >> o.pos.y >> o.settings.z >> o.settings.c >> o.settings.r))
+            if (!(ss >> o.pos.x >> o.pos.y >> o.settings.strength >> o.settings.coreRadius))
                 return false;
             ops.push_back(o);
         }

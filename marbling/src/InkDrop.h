@@ -11,7 +11,7 @@ public:
 
     // --- Math Marbling Functions ---
     void marbled(const InkDrop &other);
-    void vortex(const Point &pos, float z, float c, float r);
+    void vortex(const Point &pos, float strength, float coreRadius);
     void tine(const Point &m, float x, float y, float z, float c);
     void wave(const Point &m, float bx, float by, float amplitude, float wavelength);
 

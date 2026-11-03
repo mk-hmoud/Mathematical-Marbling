@@ -92,7 +92,7 @@ void Canvas::vortex(const Point &pos, const VortexSettings &settings)
 #pragma omp parallel for schedule(static) if (n > PARALLEL_THRESHOLD)
     for (int i = 0; i < n; ++i)
     {
-        _inkDrops[i].vortex(pos, settings.z, settings.c, settings.r);
+        _inkDrops[i].vortex(pos, settings.strength, settings.coreRadius);
         _inkDrops[i].resample(MAX_EDGE);
     }
     _dirty = true;
