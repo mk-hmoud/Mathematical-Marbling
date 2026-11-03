@@ -4,6 +4,12 @@
 // per-drop loops run serially.
 static constexpr int PARALLEL_THRESHOLD = 128;
 
+// Longest boundary edge (canvas px) tolerated after an operation. Operations
+// stretch the ink; re-sampling to this keeps filaments smooth instead of
+// collapsing into straight chords. Re-sampling also decimates near-collinear
+// points, so straight runs stay cheap while curves keep their detail.
+static constexpr float MAX_EDGE = 4.0f;
+
 Canvas::Canvas(int width, int height)
     : _width(width), _height(height)
 {
@@ -17,6 +23,7 @@ void Canvas::add_drop(float x, float y, float radius, const Color &color)
     for (int i = 0; i < n; ++i)
     {
         _inkDrops[i].marbled(new_drop);
+        _inkDrops[i].resample(MAX_EDGE);
     }
     _inkDrops.push_back(new_drop);
     _dirty = true;
@@ -34,6 +41,7 @@ void Canvas::tine(const Point &start, const Point &end, const TineSettings &sett
     for (int i = 0; i < n; ++i)
     {
         _inkDrops[i].tine(direction, start.x, start.y, settings.z, settings.c);
+        _inkDrops[i].resample(MAX_EDGE);
     }
     _dirty = true;
 }
@@ -60,18 +68,20 @@ void Canvas::comb(const Point &start, const Point &end, const CombSettings &sett
 
     const int n = static_cast<int>(_inkDrops.size());
 
-    // Apply each tine ("tooth" of the comb) one by one
-    for (int t = 0; t < settings.numTines; ++t)
-    {
-        // 4. Calculate the starting point for this specific tine
-        Point tineStart = combHandleCenter - offset + perpendicular * (static_cast<float>(t) * settings.spacing);
-
-        // 5. Apply this single tine to all drops
+    // For each drop, apply every comb tooth, then re-sample once. (Teeth act
+    // only on their own drop, so iterating drop-outer is equivalent to the
+    // original tooth-outer order but lets us re-sample a single time per drop.)
 #pragma omp parallel for schedule(static) if (n > PARALLEL_THRESHOLD)
-        for (int i = 0; i < n; ++i)
+    for (int i = 0; i < n; ++i)
+    {
+        for (int t = 0; t < settings.numTines; ++t)
         {
-            _inkDrops[i].tine(direction, tineStart.x, tineStart.y, settings.properties.z, settings.properties.c);
+            const Point tineStart =
+                combHandleCenter - offset + perpendicular * (static_cast<float>(t) * settings.spacing);
+            _inkDrops[i].tine(direction, tineStart.x, tineStart.y,
+                              settings.properties.z, settings.properties.c);
         }
+        _inkDrops[i].resample(MAX_EDGE);
     }
     _dirty = true;
 }
@@ -83,6 +93,7 @@ void Canvas::vortex(const Point &pos, const VortexSettings &settings)
     for (int i = 0; i < n; ++i)
     {
         _inkDrops[i].vortex(pos, settings.z, settings.c, settings.r);
+        _inkDrops[i].resample(MAX_EDGE);
     }
     _dirty = true;
 }
@@ -99,6 +110,7 @@ void Canvas::wave(const Point &start, const Point &end, const WaveSettings &sett
     for (int i = 0; i < n; ++i)
     {
         _inkDrops[i].wave(direction, start.x, start.y, settings.amplitude, settings.wavelength);
+        _inkDrops[i].resample(MAX_EDGE);
     }
     _dirty = true;
 }

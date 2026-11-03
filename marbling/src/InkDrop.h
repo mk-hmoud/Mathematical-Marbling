@@ -15,6 +15,13 @@ public:
     void tine(const Point &m, float x, float y, float z, float c);
     void wave(const Point &m, float bx, float by, float amplitude, float wavelength);
 
+    // Re-sample the boundary so no edge is longer than maxEdgeLen, inserting
+    // points on stretched edges. Marbling operations stretch the boundary into
+    // thin filaments; without re-sampling the fixed vertex set spreads apart
+    // and smooth curves collapse into visible straight chords. Call after each
+    // deformation. Deterministic; bounded by a hard per-drop vertex cap.
+    void resample(float maxEdgeLen);
+
     // --- Data access methods for the Renderer ---
     const std::vector<Point> &getBoundary() const;
     const Color &getColor() const;

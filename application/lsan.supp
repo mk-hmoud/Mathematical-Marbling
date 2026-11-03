@@ -20,3 +20,18 @@ leak:libgobject-2.0
 leak:libdecor
 leak:fc_thread_func
 leak:g_thread_proxy
+
+# GLFW's native Wayland + EGL window-creation path. glfwCreateWindow brings up
+# EGL (loading the Mesa driver via dlopen) and binds Wayland protocol objects;
+# both leave one-time, process-lifetime allocations unfreed at exit. These are
+# in GLFW / Mesa EGL / libwayland-client, not this project's code. (Scoped to
+# those libraries and the specific GLFW entry points so project leaks are not
+# masked — the dlopened EGL driver shows as "<unknown module>" and ASan may
+# mis-attribute adjacent frames, so we match on the GLFW/Wayland frames.)
+leak:_glfwInitEGL
+leak:_glfwCreateWindowWayland
+leak:libwayland-client
+leak:libwayland-egl
+leak:libEGL
+leak:libGLX
+leak:eglInitialize
