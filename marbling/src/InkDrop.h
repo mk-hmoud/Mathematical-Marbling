@@ -22,12 +22,11 @@ public:
     // carried (strength*|b-a|).
     void oseenStroke(const Point &a, const Point &b, float L, float strength, int steps);
 
-    // Re-sample the boundary so no edge is longer than maxEdgeLen, inserting
-    // points on stretched edges. Marbling operations stretch the boundary into
-    // thin filaments; without re-sampling the fixed vertex set spreads apart
-    // and smooth curves collapse into visible straight chords. Call after each
-    // deformation. Deterministic; bounded by a hard per-drop vertex cap.
-    void resample(float maxEdgeLen);
+    // Re-sample the boundary: subdivide edges longer than maxEdgeLen, then
+    // decimate points within eps of the neighbour chord. Call after each
+    // deformation to keep curves smooth while shedding redundant points on
+    // straight runs. Deterministic; bounded by a hard per-drop vertex cap.
+    void resample(float maxEdgeLen, float eps);
 
     // --- Data access methods for the Renderer ---
     const std::vector<Point> &getBoundary() const;

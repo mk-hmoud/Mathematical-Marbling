@@ -62,6 +62,21 @@ public:
     bool isRecolorActive() const { return _recolorActive; }
     const std::vector<Color> &recolorPalette() const { return _recolorPalette; }
 
+    // --- Engine tuning (runtime) ---
+    // Set the geometry config and replay so existing ops reflect it. Lets two
+    // artworks run different configs for side-by-side comparison.
+    void setConfig(const EngineConfig &c)
+    {
+        _canvas.setConfig(c);
+        _previewCanvas.setConfig(c);
+        rebuild();
+    }
+    const EngineConfig &config() const { return _canvas.config(); }
+
+    // Bumps on every committed change (add/clear/undo/redo/load/recolor), so a
+    // comparison mirror can cheaply detect when to re-sync. Preview does not bump.
+    unsigned editVersion() const { return _editVersion; }
+
     // --- Undo / redo ---
     bool canUndo() const { return !_undoSteps.empty(); }
     bool canRedo() const { return !_redoSteps.empty(); }
@@ -109,6 +124,7 @@ private:
     Color mapColor(const Color &c) const; // recolor remap (identity if off)
 
     int _width, _height;
+    unsigned _editVersion = 0; // bumps on every committed change
     std::mt19937 _rng;
     Canvas _canvas;         // committed geometry
     Canvas _previewCanvas;  // committed geometry + the in-progress gesture

@@ -162,4 +162,15 @@ struct WaveSettings
     float wavelength = 120.0f;
 };
 
+/**
+ * @brief Runtime tuning of the geometry engine, so experiments are flippable at
+ * run time (and comparable side by side) instead of compile-time constants.
+ * Each Canvas/Artwork carries its own, so two can run different configs at once.
+ */
+struct EngineConfig
+{
+    float maxEdge = 4.0f;     // target boundary edge length (canvas px)
+    float decimateEps = 0.3f; // max deviation (px) to drop a near-collinear point
+};
+
 #endif // DATATYPES_H

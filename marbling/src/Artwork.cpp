@@ -82,6 +82,7 @@ void Artwork::record(const Operation &op)
         _undoSteps.push_back(1);
 
     _dirty = true;
+    ++_editVersion;
 }
 
 void Artwork::beginBatch()
@@ -245,6 +246,7 @@ void Artwork::redo()
     _redo.erase(_redo.begin() + start, _redo.end());
     _undoSteps.push_back(n);
     _dirty = true;
+    ++_editVersion;
 }
 
 void Artwork::rebuild()
@@ -253,6 +255,7 @@ void Artwork::rebuild()
     for (const auto &op : _ops)
         apply(op);
     _dirty = true;
+    ++_editVersion;
 }
 
 void Artwork::apply(const Operation &op)

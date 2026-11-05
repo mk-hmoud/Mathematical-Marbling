@@ -158,7 +158,7 @@ void InkDrop::vortex(const Point &pos, float strength, float coreRadius)
     }
 }
 
-void InkDrop::resample(float maxEdgeLen)
+void InkDrop::resample(float maxEdgeLen, float eps)
 {
     const int n0 = static_cast<int>(_boundary.size());
     if (n0 < 3 || maxEdgeLen <= 0.0f)
@@ -189,8 +189,6 @@ void InkDrop::resample(float maxEdgeLen)
             const Point &a = _boundary[i];
             dense.push_back(a); // every original vertex is preserved
 
-            // Once the cap is reached, stop inserting but keep copying the rest
-            // of the original points so the shape is never truncated.
             if (static_cast<int>(dense.size()) >= MAX_BOUNDARY)
                 continue;
 
@@ -218,12 +216,10 @@ void InkDrop::resample(float maxEdgeLen)
     // Straight stretches (e.g. the long sides of a combed ribbon) carry points
     // that add no shape; curves do not. Dropping a vertex only when it barely
     // deviates from the chord of its neighbours sheds the former while keeping
-    // the latter, which is what bounds vertex growth across many operations.
+    // the latter, which bounds vertex growth across many operations.
     const int n = static_cast<int>(_boundary.size());
     if (n < 16)
         return; // leave small boundaries alone so drops never collapse
-
-    const float eps = 0.3f; // max deviation from the neighbour chord (canvas px)
 
     std::vector<Point> out;
     out.reserve(n);
@@ -242,9 +238,6 @@ void InkDrop::resample(float maxEdgeLen)
         if (acLen > 1e-6f)
         {
             const float dev = std::fabs(ac.x * ab.y - ac.y * ab.x) / acLen; // |ac x ab|/|ac|
-            // Drop b when it is near-collinear and the merged edge a->b would
-            // not itself grow past the edge target (keeps straight runs coarse
-            // but never creates a long gap on a curve).
             if (dev < eps && (ab.x * ab.x + ab.y * ab.y) < maxLen2)
                 keep = false;
         }

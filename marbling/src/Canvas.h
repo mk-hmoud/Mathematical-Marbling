@@ -29,6 +29,10 @@ public:
 
     std::vector<Polygon> getPolygons() const;
 
+    // Runtime engine tuning (so two canvases can run different configs at once).
+    void setConfig(const EngineConfig &c) { _config = c; }
+    const EngineConfig &config() const { return _config; }
+
     /**
      * @brief True when the ink geometry changed since the last clearDirty().
      * The renderer uses this to re-tessellate/re-upload only on edits.
@@ -39,6 +43,7 @@ public:
 private:
     int _width, _height;
     std::vector<InkDrop> _inkDrops;
+    EngineConfig _config;
     bool _dirty = true;
 };
 

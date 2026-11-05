@@ -4,12 +4,6 @@
 // per-drop loops run serially.
 static constexpr int PARALLEL_THRESHOLD = 128;
 
-// Longest boundary edge (canvas px) tolerated after an operation. Operations
-// stretch the ink; re-sampling to this keeps filaments smooth instead of
-// collapsing into straight chords. Re-sampling also decimates near-collinear
-// points, so straight runs stay cheap while curves keep their detail.
-static constexpr float MAX_EDGE = 4.0f;
-
 Canvas::Canvas(int width, int height)
     : _width(width), _height(height)
 {
@@ -23,7 +17,7 @@ void Canvas::add_drop(float x, float y, float radius, const Color &color)
     for (int i = 0; i < n; ++i)
     {
         _inkDrops[i].marbled(new_drop);
-        _inkDrops[i].resample(MAX_EDGE);
+        _inkDrops[i].resample(_config.maxEdge, _config.decimateEps);
     }
     _inkDrops.push_back(new_drop);
     _dirty = true;
@@ -41,7 +35,7 @@ void Canvas::tine(const Point &start, const Point &end, const TineSettings &sett
     for (int i = 0; i < n; ++i)
     {
         _inkDrops[i].tine(direction, start.x, start.y, settings.z, settings.c);
-        _inkDrops[i].resample(MAX_EDGE);
+        _inkDrops[i].resample(_config.maxEdge, _config.decimateEps);
     }
     _dirty = true;
 }
@@ -91,7 +85,7 @@ void Canvas::comb(const Point &start, const Point &end, const CombSettings &sett
                                   settings.properties.z, settings.properties.c);
             }
         }
-        _inkDrops[i].resample(MAX_EDGE);
+        _inkDrops[i].resample(_config.maxEdge, _config.decimateEps);
     }
     _dirty = true;
 }
@@ -106,7 +100,7 @@ void Canvas::stroke(const Point &start, const Point &end, const StrokeSettings &
     for (int i = 0; i < n; ++i)
     {
         _inkDrops[i].oseenStroke(start, end, settings.spread, settings.strength, settings.steps);
-        _inkDrops[i].resample(MAX_EDGE);
+        _inkDrops[i].resample(_config.maxEdge, _config.decimateEps);
     }
     _dirty = true;
 }
@@ -118,7 +112,7 @@ void Canvas::vortex(const Point &pos, const VortexSettings &settings)
     for (int i = 0; i < n; ++i)
     {
         _inkDrops[i].vortex(pos, settings.strength, settings.coreRadius);
-        _inkDrops[i].resample(MAX_EDGE);
+        _inkDrops[i].resample(_config.maxEdge, _config.decimateEps);
     }
     _dirty = true;
 }
@@ -135,7 +129,7 @@ void Canvas::wave(const Point &start, const Point &end, const WaveSettings &sett
     for (int i = 0; i < n; ++i)
     {
         _inkDrops[i].wave(direction, start.x, start.y, settings.amplitude, settings.wavelength);
-        _inkDrops[i].resample(MAX_EDGE);
+        _inkDrops[i].resample(_config.maxEdge, _config.decimateEps);
     }
     _dirty = true;
 }
