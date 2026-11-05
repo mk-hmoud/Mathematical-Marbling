@@ -36,7 +36,7 @@ namespace
 }
 
 Application::Application(int width, int height, const char *title)
-    : _window(nullptr), _artwork(width, height), _isDragging(false), _startX(0), _startY(0)
+    : _window(nullptr), _artwork(width, height), _artworkB(width, height), _isDragging(false), _startX(0), _startY(0)
 {
     if (!glfwInit())
     {
@@ -75,6 +75,9 @@ Application::Application(int width, int height, const char *title)
     }
 
     _renderer = std::make_unique<Renderer>();
+    _rendererB = std::make_unique<Renderer>();
+    _artwork.setConfig(_configA);
+    _artworkB.setConfig(_configB);
 
     glfwSetMouseButtonCallback(_window, [](GLFWwindow *win, int button, int action, int mods)
                                {
@@ -130,6 +133,7 @@ Application::~Application()
         ImGui::DestroyContext();
 
         _renderer.reset();
+        _rendererB.reset();
 
         glfwDestroyWindow(_window);
     }
@@ -264,6 +268,29 @@ void Application::handleMouseInput(int button, int action, int mods)
     if (button != GLFW_MOUSE_BUTTON_LEFT)
         return;
 
+    // A/B compare: grab/release the wipe divider instead of drawing.
+    if (_compareMode)
+    {
+        int fbW = 0, fbH = 0, winW = 0, winH = 0;
+        glfwGetFramebufferSize(_window, &fbW, &fbH);
+        glfwGetWindowSize(_window, &winW, &winH);
+        double cxp = 0.0, cyp = 0.0;
+        glfwGetCursorPos(_window, &cxp, &cyp);
+        const float cfx = (winW > 0) ? static_cast<float>(cxp * fbW / winW) : static_cast<float>(cxp);
+        const CanvasView v = canvasView(fbW, fbH);
+        const float divX = v.vpX + _wipeX * v.vpW;
+        if (action == GLFW_PRESS && std::fabs(cfx - divX) < 10.0f)
+        {
+            _draggingWipe = true;
+            return;
+        }
+        if (action == GLFW_RELEASE && _draggingWipe)
+        {
+            _draggingWipe = false;
+            return;
+        }
+    }
+
     double xpos, ypos;
     glfwGetCursorPos(_window, &xpos, &ypos);
     Point endPos = windowToCanvas(xpos, ypos); // canvas coordinates
@@ -313,6 +340,8 @@ void Application::handleMouseInput(int button, int action, int mods)
                 break;
             }
             _artwork.endPreview(); // committed op now shows from the real canvas
+            if (_compareMode)
+                _artworkB.endPreview();
             _isDragging = false;
         }
     }
@@ -756,6 +785,7 @@ void Application::run()
 
         drawToolsPanel();
         drawPropertiesPanel();
+        drawComparePanel();
 
         // Apply any middle-button pan (delta in framebuffer px).
         if (_isPanning)
@@ -771,6 +801,19 @@ void Application::run()
             }
             _panLastX = mx;
             _panLastY = my;
+        }
+
+        // Dragging the A/B wipe divider.
+        if (_draggingWipe)
+        {
+            int winW = 0, winH = 0;
+            glfwGetWindowSize(_window, &winW, &winH);
+            double mx = 0.0, my = 0.0;
+            glfwGetCursorPos(_window, &mx, &my);
+            const float cfx = (winW > 0) ? static_cast<float>(mx * width / winW) : static_cast<float>(mx);
+            const CanvasView v = canvasView(width, height);
+            if (v.vpW > 0)
+                _wipeX = std::clamp((cfx - v.vpX) / static_cast<float>(v.vpW), 0.0f, 1.0f);
         }
 
         // Clear the whole window to the "outside" color.
@@ -811,15 +854,48 @@ void Application::run()
                 _artwork.previewStroke(dragStart, dragEnd, _strokeSettings);
         }
 
-        // Re-tessellate and re-upload only when the ink geometry changed.
-        if (_artwork.isDirty())
+        if (_compareMode)
         {
-            _renderer->updateBatch(_artwork.getPolygons());
-            _artwork.clearDirty();
+            syncCompare();          // mirror A's committed history into B if it changed
+            if (_isDragging)
+                previewOnB();       // show the in-progress gesture on B too
         }
-        _renderer->drawBatchSymmetric(_symmetry, view.vpX, view.vpY, view.vpW, view.vpH,
-                                      static_cast<float>(_artwork.width()),
-                                      static_cast<float>(_artwork.height()), _symmetryFold);
+
+        if (_compareMode)
+        {
+            // A/B wipe: side A clipped left of the divider, side B right, same
+            // view. (Plain batch, no symmetry, for a clean comparison.)
+            const int wipePx = view.vpX + static_cast<int>(_wipeX * view.vpW);
+
+            _renderer->setView(view.vpX, view.vpY, view.vpW, view.vpH,
+                               static_cast<float>(_artwork.width()), static_cast<float>(_artwork.height()));
+            if (_artwork.isDirty()) { _renderer->updateBatch(_artwork.getPolygons()); _artwork.clearDirty(); }
+            glScissor(view.vpX, view.vpY, std::max(0, wipePx - view.vpX), view.vpH);
+            _renderer->drawBatch();
+
+            _rendererB->setView(view.vpX, view.vpY, view.vpW, view.vpH,
+                                static_cast<float>(_artworkB.width()), static_cast<float>(_artworkB.height()));
+            if (_artworkB.isDirty()) { _rendererB->updateBatch(_artworkB.getPolygons()); _artworkB.clearDirty(); }
+            glScissor(wipePx, view.vpY, std::max(0, view.vpX + view.vpW - wipePx), view.vpH);
+            _rendererB->drawBatch();
+
+            // Divider line across the full canvas rect.
+            glScissor(view.vpX, view.vpY, view.vpW, view.vpH);
+            const float wcx = _wipeX * static_cast<float>(_artwork.width());
+            _renderer->drawDragLine(Point(wcx, 0.0f), Point(wcx, static_cast<float>(_artwork.height())));
+        }
+        else
+        {
+            // Re-tessellate and re-upload only when the ink geometry changed.
+            if (_artwork.isDirty())
+            {
+                _renderer->updateBatch(_artwork.getPolygons());
+                _artwork.clearDirty();
+            }
+            _renderer->drawBatchSymmetric(_symmetry, view.vpX, view.vpY, view.vpW, view.vpH,
+                                          static_cast<float>(_artwork.width()),
+                                          static_cast<float>(_artwork.height()), _symmetryFold);
+        }
 
         if (_isDragging)
         {
@@ -1361,5 +1437,95 @@ void Application::drawStatusBar()
 
         ImGui::EndMenuBar();
     }
+    ImGui::End();
+}
+
+void Application::syncCompare()
+{
+    // Mirror A's committed op history into B only when A actually committed a
+    // change (cheap version check), so B replays the same ops under its config.
+    if (_artwork.editVersion() == _lastSyncVersion)
+        return;
+    _artworkB.setOperations(_artwork.operations());
+    if (_artwork.isRecolorActive())
+        _artworkB.setRecolor(_artwork.recolorPalette());
+    else
+        _artworkB.clearRecolor();
+    _lastSyncVersion = _artwork.editVersion();
+}
+
+void Application::previewOnB()
+{
+    double mx = 0.0, my = 0.0;
+    glfwGetCursorPos(_window, &mx, &my);
+    const Point a(static_cast<float>(_startX), static_cast<float>(_startY));
+    const Point b = windowToCanvas(mx, my);
+    if (_toolMode == ToolMode::Tine)
+        _artworkB.previewTine(a, b, _tineSettings);
+    else if (_toolMode == ToolMode::Comb)
+        _artworkB.previewComb(a, b, _combSettings);
+    else if (_toolMode == ToolMode::Wave)
+        _artworkB.previewWave(a, b, _waveSettings);
+    else if (_toolMode == ToolMode::Stroke)
+        _artworkB.previewStroke(a, b, _strokeSettings);
+}
+
+void Application::drawComparePanel()
+{
+    if (!ImGui::Begin("Compare (A | B)"))
+    {
+        ImGui::End();
+        return;
+    }
+
+    if (ImGui::Checkbox("Compare mode", &_compareMode) && _compareMode)
+        _lastSyncVersion = _artwork.editVersion() - 1; // force an immediate mirror
+
+    if (!_compareMode)
+    {
+        ImGui::TextDisabled("Run two engine configs at once.\nA on the left, B on the right.");
+        ImGui::End();
+        return;
+    }
+
+    ImGui::SliderFloat("Wipe", &_wipeX, 0.0f, 1.0f, "%.2f");
+    helpMarker("Drag the divider line on the canvas, or this slider.");
+    ImGui::TextDisabled("Same gestures feed both sides.");
+
+    // Editor for one side's EngineConfig; returns true if anything changed.
+    auto editCfg = [&](const char *tag, EngineConfig &c) -> bool
+    {
+        bool changed = false;
+        ImGui::PushID(tag);
+        ImGui::SetNextItemWidth(130.0f);
+        changed |= ImGui::SliderFloat("Max edge", &c.maxEdge, 1.5f, 10.0f, "%.1f px");
+        ImGui::SetNextItemWidth(130.0f);
+        changed |= ImGui::SliderFloat("Decimate eps", &c.decimateEps, 0.02f, 1.0f, "%.2f px");
+        ImGui::PopID();
+        return changed;
+    };
+
+    ImGui::SeparatorText("A  (left)");
+    if (editCfg("A", _configA))
+        _artwork.setConfig(_configA); // rebuilds A; B re-syncs next frame
+
+    ImGui::SeparatorText("B  (right)");
+    if (editCfg("B", _configB))
+        _artworkB.setConfig(_configB); // rebuilds B under its own config
+
+    ImGui::Spacing();
+    if (ImGui::Button("Copy A -> B"))
+    {
+        _configB = _configA;
+        _artworkB.setConfig(_configB);
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Swap A <-> B"))
+    {
+        std::swap(_configA, _configB);
+        _artwork.setConfig(_configA);
+        _artworkB.setConfig(_configB);
+    }
+
     ImGui::End();
 }

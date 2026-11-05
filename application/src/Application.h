@@ -81,10 +81,26 @@ private:
     void applyGelGit();
     void applyChevron();
 
+    // A/B compare: keep B's committed history mirrored from A, render with a
+    // draggable wipe divider, and route the live preview to both.
+    void syncCompare();     // mirror A's ops into B when A committed a change
+    void previewOnB();      // apply the in-progress gesture to B (compare mode)
+    void drawComparePanel();
+
 private:
     GLFWwindow *_window;
     Artwork _artwork;
     std::unique_ptr<Renderer> _renderer;
+
+    // --- A/B compare mode ---
+    Artwork _artworkB;
+    std::unique_ptr<Renderer> _rendererB;
+    bool _compareMode = false;
+    float _wipeX = 0.5f;            // divider position, 0..1 across the canvas rect
+    bool _draggingWipe = false;
+    unsigned _lastSyncVersion = 0; // last A editVersion mirrored into B
+    EngineConfig _configA;         // config for side A (left)
+    EngineConfig _configB;         // config for side B (right)
 
     // UI theme / typography
     Theme::Fonts _fonts;
